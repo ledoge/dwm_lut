@@ -1,5 +1,5 @@
 # About
-This is a DLL for applying 3D LUTs to the Windows Desktop by hooking into DWM. It doesn't work if you have more than one monitor, and there's probably a bunch of other things that can break it. Right now it only works if `dwmcore.dll` in `C:\Windows\System32` is version 10.0.19041.844 (CRC32 `CB031CC3`), since there's hardcoded offsets in the source code.
+This is a DLL for applying 3D LUTs to the Windows Desktop by hooking into DWM. It doesn't work if you have more than one monitor, and there's probably a bunch of other things that can break it. It should (?) work on any 20H2 build of Windows 10, but it might not. For what it's worth, it definitely works when `dwmcore.dll` in `C:\Windows\System32` is version 10.0.19041.844 (CRC32 `CB031CC3`).
 
 # Usage
 Use DisplayCAL to generate a 65x65x65 PNG LUT and move it to `C:\lut.png`. Then, inject `dwm_lut.dll` into `dwm.exe` using the injector of your choice.
