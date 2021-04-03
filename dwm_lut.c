@@ -2,14 +2,14 @@
 #include <d3dcompiler.h>
 #include <dxgi.h>
 #include <MinHook.h>
+#include <psapi.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <windows.h>
 
-#define COVERLAYCONTXET_PRESENT_ADDRESS 0xE35CC
-#define IOVERLAYSWAPCHAIN_IDXGISWAPCHAIN_OFFSET (-0x118)
-
 #define STRINGIFY(x) #x
+
+const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
+const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 
 char shaders[] = STRINGIFY(
         static const float lutSize = 65;
@@ -73,9 +73,9 @@ ID3D11Texture2D *texture;
 ID3D11ShaderResourceView *textureView;
 
 ID3D11SamplerState *lutSamplerState;
-ID3D11ShaderResourceView  *lutTextureView;
+ID3D11ShaderResourceView *lutTextureView;
 
-HRESULT WINAPI D3DX11CreateShaderResourceViewFromFileA(ID3D11Device* pDevice, LPCSTR pSrcFile, void* pLoadInfo, void* pPump, ID3D11ShaderResourceView** ppShaderResourceView, HRESULT* pHResult);
+HRESULT WINAPI D3DX11CreateShaderResourceViewFromFileA(ID3D11Device *pDevice, LPCSTR pSrcFile, void *pLoadInfo, void *pPump, ID3D11ShaderResourceView **ppShaderResourceView, HRESULT *pHResult);
 
 void DrawRectangle(struct tagRECT *rect) {
     float width = backBufferDesc.Width;
@@ -108,7 +108,7 @@ void DrawRectangle(struct tagRECT *rect) {
     deviceContext->lpVtbl->Draw(deviceContext, numVerts, 0);
 }
 
-void InitializeStuff(IDXGISwapChain* swapChain) {
+void InitializeStuff(IDXGISwapChain *swapChain) {
     swapChain->lpVtbl->GetDevice(swapChain, &IID_ID3D11Device, (void **) &device);
     device->lpVtbl->GetImmediateContext(device, &deviceContext);
     {
@@ -241,19 +241,35 @@ typedef long(COverlayContext_Present_t)(void *, void *, unsigned int, rectVec *,
 COverlayContext_Present_t *COverlayContext_Present_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
-    IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((char *) overlaySwapChain + IOVERLAYSWAPCHAIN_IDXGISWAPCHAIN_OFFSET);
+    IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
     ApplyLUT(swapChain, rectVec->start, rectVec->end - rectVec->start);
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
-        case DLL_PROCESS_ATTACH:
-            COverlayContext_Present_orig = (COverlayContext_Present_t *) ((char *) GetModuleHandle("dwmcore.dll") + COVERLAYCONTXET_PRESENT_ADDRESS);
+        case DLL_PROCESS_ATTACH: {
+            HMODULE dwmcore = GetModuleHandle("dwmcore.dll");
+            MODULEINFO moduleInfo;
+            GetModuleInformation(GetCurrentProcess(), dwmcore, &moduleInfo, sizeof(moduleInfo));
+
+            for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
+                unsigned char *address = (unsigned char *) dwmcore + i;
+                if (!memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
+                    COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
+                    break;
+                }
+            }
+
+            if (COverlayContext_Present_orig == NULL) {
+                exit(1);
+            }
+
             MH_Initialize();
             MH_CreateHook((PVOID) COverlayContext_Present_orig, (PVOID) COverlayContext_Present_hook, (PVOID *) &COverlayContext_Present_orig);
             MH_EnableHook(MH_ALL_HOOKS);
             break;
+        }
         case DLL_PROCESS_DETACH:
             MH_DisableHook(MH_ALL_HOOKS);
             MH_Uninitialize();
