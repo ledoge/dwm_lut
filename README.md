@@ -11,6 +11,6 @@ Using MSYS2: Install `mingw-w64-x86_64-MinHook` and then run
 
 ```bash
 gcc dwm_lut.c -O3 -shared -static -s -lMinHook -ld3dcompiler -ld3dx11 -luuid -Wl,--exclude-all-symbols -o dwm_lut.dll
-windres dwm_lut.res dwm_lut_res.o
+windres dwm_lut.rc dwm_lut_res.o
 gcc dwm_lut_injector.c dwm_lut_res.o -O3 -s -o dwm_lut.exe
 ```
