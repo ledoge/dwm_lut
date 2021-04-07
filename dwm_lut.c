@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <windows.h>
 
+#define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
 #define STRINGIFY(x) #x
 
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
@@ -158,10 +159,27 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 
         device->lpVtbl->CreateSamplerState(device, &samplerDesc, &lutSamplerState);
-        if (FAILED(D3DX11CreateShaderResourceViewFromFileA(device, "C:\\lut.png", NULL, NULL, &lutTextureView, NULL))) {
+
+        char lutPath[MAX_PATH];
+        ExpandEnvironmentStringsA("%SYSTEMROOT%\\Temp\\lut.png", lutPath, sizeof(lutPath));
+        if (FAILED(D3DX11CreateShaderResourceViewFromFileA(device, lutPath, NULL, NULL, &lutTextureView, NULL))) {
             exit(1);
         }
     }
+}
+
+void UninitializeStuff() {
+    RELEASE_IF_NOT_NULL(device);
+    RELEASE_IF_NOT_NULL(deviceContext);
+    RELEASE_IF_NOT_NULL(vertexShader);
+    RELEASE_IF_NOT_NULL(pixelShader);
+    RELEASE_IF_NOT_NULL(inputLayout);
+    RELEASE_IF_NOT_NULL(vertexBuffer);
+    RELEASE_IF_NOT_NULL(samplerState);
+    RELEASE_IF_NOT_NULL(texture);
+    RELEASE_IF_NOT_NULL(textureView);
+    RELEASE_IF_NOT_NULL(lutSamplerState);
+    RELEASE_IF_NOT_NULL(lutTextureView);
 }
 
 void ApplyLUT(IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
@@ -271,8 +289,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             break;
         }
         case DLL_PROCESS_DETACH:
-            MH_DisableHook(MH_ALL_HOOKS);
             MH_Uninitialize();
+            Sleep(20);
+            UninitializeStuff();
             break;
         default:
             break;
