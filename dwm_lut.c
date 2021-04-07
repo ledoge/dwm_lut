@@ -279,11 +279,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 }
             }
 
-            if (COverlayContext_Present_orig == NULL) {
-                exit(1);
-            }
-
             MH_Initialize();
+            if (COverlayContext_Present_orig == NULL) {
+                return FALSE;
+            }
             MH_CreateHook((PVOID) COverlayContext_Present_orig, (PVOID) COverlayContext_Present_hook, (PVOID *) &COverlayContext_Present_orig);
             MH_EnableHook(MH_ALL_HOOKS);
             break;
