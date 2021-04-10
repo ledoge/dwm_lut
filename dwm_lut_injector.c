@@ -37,6 +37,13 @@ int main(int argc, char *argv[]) {
         bool didUnload = false;
 
         if (doUnload || doInject) {
+            char d3dx11Path[MAX_PATH];
+            ExpandEnvironmentStringsA("%SYSTEMROOT%\\System32\\d3dx11_43.dll", d3dx11Path, sizeof(d3dx11Path));
+            if (GetFileAttributesA(d3dx11Path) == INVALID_FILE_ATTRIBUTES) {
+                fprintf(stderr, "You must install the DirectX End-User Runtime.");
+                return 1;
+            }
+
             char basePath[MAX_PATH];
             ExpandEnvironmentStringsA("%SYSTEMROOT%\\Temp\\", basePath, sizeof(basePath));
 
