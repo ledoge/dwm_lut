@@ -12,6 +12,8 @@
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
 const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 
+const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes[] = {0x48, 0x89, 0x7c, 0x24, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x40};
+
 char shaders[] = STRINGIFY(
         static const float lutSize = 65;
 
@@ -264,6 +266,10 @@ long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned i
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
 
+bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void) {
+    return false;
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH: {
@@ -271,19 +277,33 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             MODULEINFO moduleInfo;
             GetModuleInformation(GetCurrentProcess(), dwmcore, &moduleInfo, sizeof(moduleInfo));
 
+            void* COverlayContext_IsCandidateDirectFlipCompatbile_orig = 0;
+
             for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
                 unsigned char *address = (unsigned char *) dwmcore + i;
-                if (!memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
+                if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
                     COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
+                }
+                else if (!COverlayContext_IsCandidateDirectFlipCompatbile_orig && !memcmp(address, COverlayContext_IsCandidateDirectFlipCompatbile_bytes, sizeof(COverlayContext_IsCandidateDirectFlipCompatbile_bytes))) {
+                    static int found = 0;
+                    found++;
+                    if (found == 2) {
+                        COverlayContext_IsCandidateDirectFlipCompatbile_orig = address - 0xa;
+                    }
+                }
+                if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig) {
                     break;
                 }
             }
-
-            MH_Initialize();
             if (COverlayContext_Present_orig == NULL) {
                 return FALSE;
             }
+
+            MH_Initialize();
             MH_CreateHook((PVOID) COverlayContext_Present_orig, (PVOID) COverlayContext_Present_hook, (PVOID *) &COverlayContext_Present_orig);
+            if (COverlayContext_IsCandidateDirectFlipCompatbile_orig) {
+                MH_CreateHook((PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_orig, (PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_hook, NULL);
+            }
             MH_EnableHook(MH_ALL_HOOKS);
             break;
         }
