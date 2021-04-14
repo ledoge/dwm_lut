@@ -6,6 +6,8 @@ Use DisplayCAL to generate a 65x65x65 PNG LUT with filename `lut.png` and put it
 
 If you don't have `d3dx11_43.dll` in System32, you'll have to install the [DirectX End-User Runtime](https://www.microsoft.com/en-us/download/details.aspx?id=35).
 
+If you experience issues with some applications turning black, you need to disable MPO. You can do that by following the instructions [here](https://nvidia.custhelp.com/app/answers/detail/a_id/5157).
+
 # Compiling
 Using MSYS2: Install `mingw-w64-x86_64-MinHook` and then run
 
