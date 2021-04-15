@@ -54,7 +54,7 @@ char shaders[] = STRINGIFY(
             float4 res1 = lutTex.Sample(lutSmp, tex1);
             float4 res2 = lutTex.Sample(lutSmp, tex2);
 
-            return lerp(res1, res2, frac(blue));
+            return float4(lerp(res1, res2, frac(blue)).rgb, sample.a);
         }
 );
 
