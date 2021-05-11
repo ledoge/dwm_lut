@@ -9,7 +9,7 @@ If you don't have `d3dx11_43.dll` in System32, you'll have to install the [Direc
 Note: While the LUT is enabled, DirectFlip and MPO are force disabled. These features are designed to improve performance for some windowed applications by allowing them bypass DWM (and therefore also the LUT). This ensures that the LUT gets applied to all applications (except exclusive fullscreen ones).
 
 # Compiling
-Using MSYS2: Install `mingw-w64-x86_64-MinHook` and then run
+Using MSYS2's mingw64 environment: Install `mingw-w64-x86_64-MinHook` and then run
 
 ```bash
 gcc dwm_lut.c -O3 -shared -static -s -lMinHook -ld3dcompiler -ld3dx11 -luuid -Wl,--exclude-all-symbols -o dwm_lut.dll
