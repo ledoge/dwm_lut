@@ -5,7 +5,7 @@
 #include <windows.h>
 
 #define DLL_NAME "dwm_lut.dll"
-#define LUT_NAME "lut.png"
+#define LUT_NAME "lut.cube"
 
 void ClearPermissions(char *filePath) {
     HANDLE hFile = CreateFileA(filePath, READ_CONTROL | WRITE_DAC, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -37,13 +37,6 @@ int main(int argc, char *argv[]) {
         bool didUnload = false;
 
         if (doUnload || doInject) {
-            char d3dx11Path[MAX_PATH];
-            ExpandEnvironmentStringsA("%SYSTEMROOT%\\System32\\d3dx11_43.dll", d3dx11Path, sizeof(d3dx11Path));
-            if (GetFileAttributesA(d3dx11Path) == INVALID_FILE_ATTRIBUTES) {
-                fprintf(stderr, "You must install the DirectX End-User Runtime.");
-                return 1;
-            }
-
             char basePath[MAX_PATH];
             ExpandEnvironmentStringsA("%SYSTEMROOT%\\Temp\\", basePath, sizeof(basePath));
 
@@ -89,22 +82,22 @@ int main(int argc, char *argv[]) {
                 }
             }
             if (doInject) {
+                if (!CopyFileA(DLL_NAME, dllPath, FALSE)) {
+                    fprintf(stderr, "Failed to copy " DLL_NAME ".\n");
+                    return 1;
+                }
+                ClearPermissions(dllPath);
+
+                if (!CopyFileA(LUT_NAME, lutPath, FALSE)) {
+                    fprintf(stderr, "Failed to copy " LUT_NAME ".\n");
+                    return 1;
+                }
+                ClearPermissions(lutPath);
+
                 if (Process32First(processSnapshot, &processEntry) == TRUE) {
                     while (Process32Next(processSnapshot, &processEntry) == TRUE) {
                         if (!strcmp(processEntry.szExeFile, "dwm.exe")) {
                             HANDLE dwm = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processEntry.th32ProcessID);
-
-                            if (!CopyFileA(DLL_NAME, dllPath, FALSE)) {
-                                fprintf(stderr, "Failed to copy " DLL_NAME " - does it exist?\n");
-                                return 1;
-                            }
-                            ClearPermissions(dllPath);
-
-                            if (!CopyFileA(LUT_NAME, lutPath, FALSE)) {
-                                fprintf(stderr, "Failed to copy " LUT_NAME " - does it exist?\n");
-                                return 1;
-                            }
-                            ClearPermissions(lutPath);
 
                             LPVOID address = VirtualAllocEx(dwm, NULL, strlen(dllPath), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
                             WriteProcessMemory(dwm, address, dllPath, strlen(dllPath), NULL);
@@ -114,7 +107,7 @@ int main(int argc, char *argv[]) {
                             DWORD exitCode;
                             GetExitCodeThread(thread, &exitCode);
                             if (exitCode == 0) {
-                                fprintf(stderr, "LoadLibrary returned 0 - did dwmcore.dll get updated?");
+                                fprintf(stderr, "Failed to load or initialize DLL.\n");
                             }
 
                             CloseHandle(thread);
@@ -130,11 +123,13 @@ int main(int argc, char *argv[]) {
             if (doUnload) {
                 if (didUnload) {
                     DeleteFileA(dllPath);
-                    DeleteFileA(lutPath);
                 } else {
-                    fprintf(stderr, "LUT seems to be unloaded already - did nothing.\n");
+                    fprintf(stderr, "LUT does not seem to be loaded - did nothing.\n");
                     return 1;
                 }
+            }
+            else if (doInject) {
+                DeleteFileA(lutPath);
             }
 
             return 0;
