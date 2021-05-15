@@ -49,6 +49,67 @@ char shaders[] = _STRINGIFY((
 
         int doDithering;
 
+        float3 S(float lutR, float lutG, float lutB) {
+            float2 tex;
+            tex.x = lutR / (LUT_SIZE - 1) / (LUT_SIZE * LUT_SIZE) * (LUT_SIZE - 1) + 0.5 / (LUT_SIZE * LUT_SIZE);
+            tex.y = lutG / (LUT_SIZE - 1) / LUT_SIZE * (LUT_SIZE - 1) + 0.5 / LUT_SIZE;
+            tex.x += lutB / LUT_SIZE;
+
+            return lutTex.Sample(lutSmp, tex).rgb;
+        }
+
+        // https://www.filmlight.ltd.uk/pdf/whitepapers/FL-TL-TN-0057-SoftwareLib.pdf
+        float3 LutTransformTetrahedral(float3 rgb) {
+            float3 lutIndex = rgb * (LUT_SIZE - 1);
+            float3 n = floor(lutIndex);
+            float3 f = frac(lutIndex);
+
+            float3 Sxyz;
+            if (f.x > f.y) {
+                if (f.y > f.z) {
+                    Sxyz = (1 - f.x) * S(n.x, n.y, n.z)
+                           + (f.x - f.y) * S(n.x + 1, n.y, n.z)
+                           + (f.y - f.z) * S(n.x + 1, n.y + 1, n.z)
+                           + (f.z) * S(n.x + 1, n.y + 1, n.z + 1);
+                } else if (f.x > f.z) {
+                    Sxyz = (1 - f.x) * S(n.x, n.y, n.z)
+                           + (f.x - f.z) * S(n.x + 1, n.y, n.z)
+                           + (f.z - f.y) * S(n.x + 1, n.y, n.z + 1)
+                           + (f.y) * S(n.x + 1, n.y + 1, n.z + 1);
+                } else {
+                    Sxyz = (1 - f.z) * S(n.x, n.y, n.z)
+                           + (f.z - f.x) * S(n.x, n.y, n.z + 1)
+                           + (f.x - f.y) * S(n.x + 1, n.y, n.z + 1)
+                           + (f.y) * S(n.x + 1, n.y + 1, n.z + 1);
+                }
+            } else {
+                if (f.z > f.y) {
+                    Sxyz = (1 - f.z) * S(n.x, n.y, n.z)
+                           + (f.z - f.y) * S(n.x, n.y, n.z + 1)
+                           + (f.y - f.x) * S(n.x, n.y + 1, n.z + 1)
+                           + (f.x) * S(n.x + 1, n.y + 1, n.z + 1);
+                } else if (f.z > f.x) {
+                    Sxyz = (1 - f.y) * S(n.x, n.y, n.z)
+                           + (f.y - f.z) * S(n.x, n.y + 1, n.z)
+                           + (f.z - f.x) * S(n.x, n.y + 1, n.z + 1)
+                           + (f.x) * S(n.x + 1, n.y + 1, n.z + 1);
+                } else {
+                    Sxyz = (1 - f.y) * S(n.x, n.y, n.z)
+                           + (f.y - f.x) * S(n.x, n.y + 1, n.z)
+                           + (f.x - f.z) * S(n.x + 1, n.y + 1, n.z)
+                           + (f.z) * S(n.x + 1, n.y + 1, n.z + 1);
+                }
+            }
+            return Sxyz;
+        }
+
+        float3 OrderedDither(float3 rgb, int x, int y) {
+            float3 res = rgb + (1/64.0 * (bayerMatrix[x % 8][y % 8] - 63/2.0))/255;
+            res = round(res * 255)/255;
+
+            return res;
+        }
+
         VS_OUTPUT VS(VS_INPUT input) {
             VS_OUTPUT output;
             output.pos = float4(input.pos, 0, 1);
@@ -59,22 +120,10 @@ char shaders[] = _STRINGIFY((
         float4 PS(VS_OUTPUT input) : SV_TARGET {
             float4 sample = backBufferTex.Sample(backBufferSmp, input.tex);
 
-            float2 tex;
-            tex.x = sample.r / (LUT_SIZE * LUT_SIZE) * (LUT_SIZE - 1) + 0.5 / (LUT_SIZE * LUT_SIZE);
-            tex.y = sample.g / LUT_SIZE * (LUT_SIZE - 1) + 0.5 / LUT_SIZE;
-
-            float blue = sample.b * (LUT_SIZE - 1);
-            float2 tex1 = float2(tex.x + floor(blue) / LUT_SIZE, tex.y);
-            float2 tex2 = float2(tex.x + ceil(blue) / LUT_SIZE, tex.y);
-
-            float3 res1 = lutTex.Sample(lutSmp, tex1).rgb;
-            float3 res2 = lutTex.Sample(lutSmp, tex2).rgb;
-            float3 res = lerp(res1, res2, frac(blue));
+            float3 res = LutTransformTetrahedral(sample.rgb);
 
             if (doDithering) {
-                int2 pos = int2(input.pos.xy);
-                res += (1/64.0 * (bayerMatrix[pos.x % 8][pos.y % 8] - 63/2.0))/255;
-                res = round(res * 255)/255;
+                res = OrderedDither(res, input.pos.x, input.pos.y);
             }
 
             return float4(res, sample.a);
@@ -219,7 +268,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     }
     {
         D3D11_SAMPLER_DESC samplerDesc = {};
-        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
         samplerDesc.AddressU = samplerDesc.AddressV = samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
         samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 
