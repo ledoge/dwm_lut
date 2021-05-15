@@ -44,17 +44,13 @@ char shaders[] = _STRINGIFY((
         Texture2D backBufferTex : register(t0);
         SamplerState backBufferSmp : register(s0);
 
-        Texture2D lutTex : register(t1);
+        Texture3D lutTex : register(t1);
         SamplerState lutSmp : register(s1);
 
         int doDithering;
 
         float3 S(float lutR, float lutG, float lutB) {
-            float2 tex;
-            tex.x = lutR / (LUT_SIZE - 1) / (LUT_SIZE * LUT_SIZE) * (LUT_SIZE - 1) + 0.5 / (LUT_SIZE * LUT_SIZE);
-            tex.y = lutG / (LUT_SIZE - 1) / LUT_SIZE * (LUT_SIZE - 1) + 0.5 / LUT_SIZE;
-            tex.x += lutB / LUT_SIZE;
-
+            float3 tex = float3(lutR, lutG, lutB) / LUT_SIZE + 0.5 / (LUT_SIZE - 1);
             return lutTex.Sample(lutSmp, tex).rgb;
         }
 
@@ -208,10 +204,10 @@ bool parseCubeLut(char *filename) {
                             return false;
                         }
 
-                        lut[g][b][r][0] = red;
-                        lut[g][b][r][1] = green;
-                        lut[g][b][r][2] = blue;
-                        lut[g][b][r][3] = 1;
+                        lut[b][g][r][0] = red;
+                        lut[b][g][r][1] = green;
+                        lut[b][g][r][2] = blue;
+                        lut[b][g][r][3] = 1;
 
                         gotLine = true;
                     }
@@ -275,14 +271,12 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         device->lpVtbl->CreateSamplerState(device, &samplerDesc, &lutSamplerState);
     }
     {
-        D3D11_TEXTURE2D_DESC desc;
-        desc.Width = LUT_SIZE * LUT_SIZE;
+        D3D11_TEXTURE3D_DESC desc;
+        desc.Width = LUT_SIZE;
         desc.Height = LUT_SIZE;
+        desc.Depth = LUT_SIZE;
         desc.MipLevels = 1;
-        desc.ArraySize = 1;
         desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-        desc.SampleDesc.Count = 1;
-        desc.SampleDesc.Quality = 0;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         desc.CPUAccessFlags = 0;
@@ -290,10 +284,11 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
 
         D3D11_SUBRESOURCE_DATA initData;
         initData.pSysMem = lut;
-        initData.SysMemPitch = sizeof(lut[0]);
+        initData.SysMemPitch = sizeof(lut[0][0]);
+        initData.SysMemSlicePitch = sizeof(lut[0]);
 
-        ID3D11Texture2D *tex;
-        device->lpVtbl->CreateTexture2D(device, &desc, &initData, &tex);
+        ID3D11Texture3D *tex;
+        device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
         device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &lutTextureView);
         tex->lpVtbl->Release(tex);
     }
