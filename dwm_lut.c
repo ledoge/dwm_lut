@@ -19,18 +19,7 @@ const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes[] = {0x48, 0x89, 0x7c, 0x24, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x40};
 const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32, 0xc0, 0xc3, 0xcc, 0x83, 0x79, 0x30, 0x01, 0x0f, 0x97, 0xc0, 0xc3};
 
-char shaders[] = _STRINGIFY((
-        static const float bayerMatrix[8][8] = {
-                { 0,32, 8,40, 2,34,10,42},
-                {48,16,56,24,50,18,58,26},
-                {12,44, 4,36,14,46, 6,38},
-                {60,28,52,20,62,30,54,22},
-                { 3,35,11,43, 1,33, 9,41},
-                {51,19,59,27,49,17,57,25},
-                {15,47, 7,39,13,45, 5,37},
-                {63,31,55,23,61,29,53,21},
-        };
-
+char shaders[] = _STRINGIFY(
         struct VS_INPUT {
             float2 pos: POSITION;
             float2 tex: TEXCOORD;
@@ -46,6 +35,9 @@ char shaders[] = _STRINGIFY((
 
         Texture3D lutTex : register(t1);
         SamplerState lutSmp : register(s1);
+
+        Texture2D bayerTex : register(t2);
+        SamplerState bayerSmp : register(s2);
 
         int doDithering;
 
@@ -99,9 +91,9 @@ char shaders[] = _STRINGIFY((
             return Sxyz;
         }
 
-        float3 OrderedDither(float3 rgb, int x, int y) {
-            float3 res = rgb + (1/64.0 * (bayerMatrix[x % 8][y % 8] - 63/2.0))/255;
-            res = round(res * 255)/255;
+        float3 OrderedDither(float3 rgb, float2 pos) {
+            float3 res = rgb + bayerTex.Sample(bayerSmp, pos / 8).x;
+            res = round(res * 255) / 255;
 
             return res;
         }
@@ -119,12 +111,12 @@ char shaders[] = _STRINGIFY((
             float3 res = LutTransformTetrahedral(sample.rgb);
 
             if (doDithering) {
-                res = OrderedDither(res, input.pos.x, input.pos.y);
+                res = OrderedDither(res, input.pos.xy);
             }
 
             return float4(res, sample.a);
         }
-));
+);
 
 ID3D11Device *device;
 ID3D11DeviceContext *deviceContext;
@@ -147,6 +139,9 @@ ID3D11SamplerState *lutSamplerState;
 ID3D11ShaderResourceView *lutTextureView;
 
 ID3D11Buffer *constantBuffer;
+
+ID3D11SamplerState *bayerSamplerState;
+ID3D11ShaderResourceView *bayerTextureView;
 
 void DrawRectangle(struct tagRECT *rect) {
     float width = backBufferDesc.Width;
@@ -224,7 +219,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     device->lpVtbl->GetImmediateContext(device, &deviceContext);
     {
         ID3DBlob *vsBlob;
-        D3DCompile(shaders + 1, sizeof(shaders) - 3, NULL, NULL, NULL, "VS", "vs_5_0", 0, 0, &vsBlob, NULL);
+        D3DCompile(shaders, sizeof(shaders), NULL, NULL, NULL, "VS", "vs_5_0", 0, 0, &vsBlob, NULL);
         device->lpVtbl->CreateVertexShader(device, vsBlob->lpVtbl->GetBufferPointer(vsBlob), vsBlob->lpVtbl->GetBufferSize(vsBlob), NULL, &vertexShader);
         D3D11_INPUT_ELEMENT_DESC inputElementDesc[] =
                 {
@@ -237,7 +232,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     }
     {
         ID3DBlob *psBlob;
-        D3DCompile(shaders + 1, sizeof(shaders) - 3, NULL, NULL, NULL, "PS", "ps_5_0", 0, 0, &psBlob, NULL);
+        D3DCompile(shaders, sizeof(shaders), NULL, NULL, NULL, "PS", "ps_5_0", 0, 0, &psBlob, NULL);
         device->lpVtbl->CreatePixelShader(device, psBlob->lpVtbl->GetBufferPointer(psBlob), psBlob->lpVtbl->GetBufferSize(psBlob), NULL, &pixelShader);
         psBlob->lpVtbl->Release(psBlob);
     }
@@ -271,16 +266,14 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         device->lpVtbl->CreateSamplerState(device, &samplerDesc, &lutSamplerState);
     }
     {
-        D3D11_TEXTURE3D_DESC desc;
+        D3D11_TEXTURE3D_DESC desc = {};
         desc.Width = LUT_SIZE;
         desc.Height = LUT_SIZE;
         desc.Depth = LUT_SIZE;
         desc.MipLevels = 1;
         desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.Usage = D3D11_USAGE_IMMUTABLE;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.CPUAccessFlags = 0;
-        desc.MiscFlags = 0;
 
         D3D11_SUBRESOURCE_DATA initData;
         initData.pSysMem = lut;
@@ -290,6 +283,53 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         ID3D11Texture3D *tex;
         device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
         device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &lutTextureView);
+        tex->lpVtbl->Release(tex);
+    }
+    {
+        D3D11_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+        samplerDesc.AddressU = samplerDesc.AddressV = samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+        samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+
+        device->lpVtbl->CreateSamplerState(device, &samplerDesc, &bayerSamplerState);
+    }
+    {
+        D3D11_TEXTURE2D_DESC desc = {};
+        desc.Width = 8;
+        desc.Height = 8;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R32_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.SampleDesc.Quality = 0;
+        desc.Usage = D3D11_USAGE_IMMUTABLE;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+        float bayerMatrix[8][8] = {
+                { 0,32, 8,40, 2,34,10,42},
+                {48,16,56,24,50,18,58,26},
+                {12,44, 4,36,14,46, 6,38},
+                {60,28,52,20,62,30,54,22},
+                { 3,35,11,43, 1,33, 9,41},
+                {51,19,59,27,49,17,57,25},
+                {15,47, 7,39,13,45, 5,37},
+                {63,31,55,23,61,29,53,21},
+        };
+
+        float preCalculatedBayer[8][8];
+        for (int i = 0; i < 8; i++) {
+            for (int j = 0; j < 8; j++) {
+                preCalculatedBayer[i][j] = (1 / 64.0f * (bayerMatrix[i][j] - 63 / 2.0f)) / 255;
+            }
+        }
+
+        D3D11_SUBRESOURCE_DATA initData;
+        initData.pSysMem = preCalculatedBayer;
+        initData.SysMemPitch = sizeof(preCalculatedBayer[0]);
+
+        ID3D11Texture2D *tex;
+        device->lpVtbl->CreateTexture2D(device, &desc, &initData, &tex);
+        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &bayerTextureView);
         tex->lpVtbl->Release(tex);
     }
     {
@@ -315,6 +355,8 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(textureView)
     RELEASE_IF_NOT_NULL(lutSamplerState)
     RELEASE_IF_NOT_NULL(lutTextureView)
+    RELEASE_IF_NOT_NULL(bayerSamplerState)
+    RELEASE_IF_NOT_NULL(bayerTextureView)
     RELEASE_IF_NOT_NULL(constantBuffer)
 }
 
@@ -375,6 +417,9 @@ void ApplyLUT(IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int num
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lutTextureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &lutSamplerState);
+
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
+    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 2, 1, &bayerSamplerState);
 
     deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
 
