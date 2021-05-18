@@ -10,7 +10,7 @@ Run `list_monitors.exe`, which prints some basic information about the active di
 
 LUTs cannot be applied in HDR mode.
 
-Note: While a LUT is enabled, DirectFlip and MPO are force disabled. These features are designed to improve performance for some windowed applications by allowing them bypass DWM (and therefore also the LUT). This ensures that the LUT gets applied to all applications (except exclusive fullscreen ones).
+Note: DirectFlip and MPO get force disabled on monitors with an active LUT. These features are designed to improve performance for some windowed applications by allowing them bypass DWM (and therefore also the LUT). This ensures that the LUT gets applied to all applications (except exclusive fullscreen ones).
 
 # Compiling
 Using MSYS2's mingw64 environment: Install `mingw-w64-x86_64-MinHook` and run the included `build.sh` script.
