@@ -9,7 +9,7 @@ BOOL MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPAR
     if (!(monitorInfo.dwFlags & DISPLAY_DEVICE_MIRRORING_DRIVER)) {
         RECT* rect = &monitorInfo.rcMonitor;
         printf("%s", monitorInfo.szDevice);
-        if (rect->left == 0 && rect->top == 0) {
+        if (monitorInfo.dwFlags & MONITORINFOF_PRIMARY) {
             printf(" (primary monitor)");
         }
         printf("\n");
