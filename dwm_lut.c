@@ -256,7 +256,19 @@ void AddLUTs(char *folder) {
                 AddLUT(filePath);
             }
         }
-    } while (FindNextFile(hFind, &findData) != 0);
+    } while (FindNextFile(hFind, &findData) != 0 && numLuts < sizeof(luts) / sizeof(luts[0]));
+}
+
+lutData *GetLUTDataFromCOverlayContext(void *context) {
+    if (singleLutMode) return &luts[0];
+
+    struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) context + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
+    for (int i = 0; i < numLuts; i++) {
+        if (luts[i].left == rect->left && luts[i].top == rect->top) {
+            return &luts[i];
+        }
+    }
+    return NULL;
 }
 
 void InitializeStuff(IDXGISwapChain *swapChain) {
@@ -401,7 +413,7 @@ void UninitializeStuff() {
     }
 }
 
-void ApplyLUT(lutData lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
+void ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
     if (!device) {
         InitializeStuff(swapChain);
     }
@@ -460,7 +472,7 @@ void ApplyLUT(lutData lut, IDXGISwapChain *swapChain, struct tagRECT *rects, uns
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut.textureView);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut->textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &lutSamplerState);
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
@@ -494,27 +506,35 @@ COverlayContext_Present_t *COverlayContext_Present_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
-    struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) this + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
 
-    if (singleLutMode) {
-        ApplyLUT(luts[0], swapChain, rectVec->start, rectVec->end - rectVec->start);
-    } else {
-        for (int i = 0; i < numLuts; i++) {
-            if (luts[i].left == rect->left && luts[i].top == rect->top) {
-                ApplyLUT(luts[i], swapChain, rectVec->start, rectVec->end - rectVec->start);
-            }
-        }
+    lutData *lut = GetLUTDataFromCOverlayContext(this);
+    if (lut != NULL) {
+        ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start);
     }
 
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
 
-bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void) {
-    return false;
+typedef bool(COverlayContext_IsCandidateDirectFlipCompatbile_t)(void *, void *, void *, void *, int, unsigned int, bool, bool);
+
+COverlayContext_IsCandidateDirectFlipCompatbile_t *COverlayContext_IsCandidateDirectFlipCompatbile_orig;
+
+bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void *this, void *a2, void *a3, void *a4, int a5, unsigned int a6, bool a7, bool a8) {
+    if (GetLUTDataFromCOverlayContext(this)) {
+        return false;
+    }
+    return COverlayContext_IsCandidateDirectFlipCompatbile_orig(this, a2, a3, a4, a5, a6, a7, a8);
 }
 
-bool COverlayContext_OverlaysEnabled_hook(void) {
-    return false;
+typedef bool(COverlayContext_OverlaysEnabled_t)(void *);
+
+COverlayContext_OverlaysEnabled_t *COverlayContext_OverlaysEnabled_orig;
+
+bool COverlayContext_OverlaysEnabled_hook(void *this) {
+    if (GetLUTDataFromCOverlayContext(this)) {
+        return false;
+    }
+    return COverlayContext_OverlaysEnabled_orig(this);
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
@@ -524,9 +544,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             MODULEINFO moduleInfo;
             GetModuleInformation(GetCurrentProcess(), dwmcore, &moduleInfo, sizeof(moduleInfo));
 
-            void *COverlayContext_IsCandidateDirectFlipCompatbile_orig = 0;
-            void *COverlayContext_OverlaysEnabled_orig = 0;
-
             for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
                 unsigned char *address = (unsigned char *) dwmcore + i;
                 if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
@@ -535,10 +552,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                     static int found = 0;
                     found++;
                     if (found == 2) {
-                        COverlayContext_IsCandidateDirectFlipCompatbile_orig = address - 0xa;
+                        COverlayContext_IsCandidateDirectFlipCompatbile_orig = (COverlayContext_IsCandidateDirectFlipCompatbile_t *) (address - 0xa);
                     }
                 } else if (!COverlayContext_OverlaysEnabled_orig && !memcmp(address, COverlayContext_OverlaysEnabled_bytes, sizeof(COverlayContext_OverlaysEnabled_bytes))) {
-                    COverlayContext_OverlaysEnabled_orig = address - 0x7;
+                    COverlayContext_OverlaysEnabled_orig = (COverlayContext_OverlaysEnabled_t *) (address - 0x7);
                 }
                 if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig) {
                     break;
@@ -558,8 +575,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && numLuts != 0) {
                 MH_Initialize();
                 MH_CreateHook((PVOID) COverlayContext_Present_orig, (PVOID) COverlayContext_Present_hook, (PVOID *) &COverlayContext_Present_orig);
-                MH_CreateHook((PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_orig, (PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_hook, NULL);
-                MH_CreateHook((PVOID) COverlayContext_OverlaysEnabled_orig, (PVOID) COverlayContext_OverlaysEnabled_hook, NULL);
+                MH_CreateHook((PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_orig, (PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_hook, (PVOID *) &COverlayContext_IsCandidateDirectFlipCompatbile_orig);
+                MH_CreateHook((PVOID) COverlayContext_OverlaysEnabled_orig, (PVOID) COverlayContext_OverlaysEnabled_hook, (PVOID *) &COverlayContext_OverlaysEnabled_orig);
                 MH_EnableHook(MH_ALL_HOOKS);
                 break;
             }
