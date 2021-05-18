@@ -7,13 +7,11 @@
 #include <stdio.h>
 #include <windows.h>
 
+#include "dwm_lut.h"
+
 #define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
 #define STRINGIFY(x) #x
 #define _STRINGIFY(x) STRINGIFY(x)
-
-#define BASEPATH "%SYSTEMROOT%\\Temp\\"
-#define LUT_NAME "lut.cube"
-#define LUT_FOLDER "luts"
 
 #define LUT_SIZE 65
 

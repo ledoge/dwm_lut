@@ -4,10 +4,7 @@
 #include <tlhelp32.h>
 #include <windows.h>
 
-#define BASEPATH "%SYSTEMROOT%\\Temp\\"
-#define DLL_NAME "dwm_lut.dll"
-#define LUT_NAME "lut.cube"
-#define LUT_FOLDER "luts"
+#include "dwm_lut.h"
 
 void ClearPermissions(char *filePath) {
     HANDLE hFile = CreateFileA(filePath, READ_CONTROL | WRITE_DAC, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
