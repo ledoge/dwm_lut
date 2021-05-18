@@ -11,6 +11,10 @@
 #define STRINGIFY(x) #x
 #define _STRINGIFY(x) STRINGIFY(x)
 
+#define BASEPATH "%SYSTEMROOT%\\Temp\\"
+#define LUT_NAME "lut.cube"
+#define LUT_FOLDER "luts"
+
 #define LUT_SIZE 65
 
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
@@ -18,6 +22,9 @@ const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 
 const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes[] = {0x48, 0x89, 0x7c, 0x24, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x40};
 const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32, 0xc0, 0xc3, 0xcc, 0x83, 0x79, 0x30, 0x01, 0x0f, 0x97, 0xc0, 0xc3};
+
+const int COverlayContext_CLegacyRenderTarget_offset = -0x150;
+const int CLegacyRenderTarget_DeviceClipBox_offset = 0x30;
 
 char shaders[] = _STRINGIFY(
         struct VS_INPUT {
@@ -38,8 +45,6 @@ char shaders[] = _STRINGIFY(
 
         Texture2D bayerTex : register(t2);
         SamplerState bayerSmp : register(s2);
-
-        int doDithering;
 
         float3 S(float lutR, float lutG, float lutB) {
             float3 tex = float3(lutR, lutG, lutB) / LUT_SIZE + 0.5 / (LUT_SIZE - 1);
@@ -110,9 +115,7 @@ char shaders[] = _STRINGIFY(
 
             float3 res = LutTransformTetrahedral(sample.rgb);
 
-            if (doDithering) {
-                res = OrderedDither(res, input.pos.xy);
-            }
+            res = OrderedDither(res, input.pos.xy);
 
             return float4(res, sample.a);
         }
@@ -130,32 +133,44 @@ UINT stride;
 UINT offset;
 
 D3D11_TEXTURE2D_DESC backBufferDesc;
+D3D11_TEXTURE2D_DESC textureDesc;
 
 ID3D11SamplerState *samplerState;
 ID3D11Texture2D *texture;
 ID3D11ShaderResourceView *textureView;
 
 ID3D11SamplerState *lutSamplerState;
-ID3D11ShaderResourceView *lutTextureView;
-
-ID3D11Buffer *constantBuffer;
 
 ID3D11SamplerState *bayerSamplerState;
 ID3D11ShaderResourceView *bayerTextureView;
+
+typedef struct lutData {
+    int left;
+    int top;
+    ID3D11ShaderResourceView *lutTextureView;
+    float (*rawLut)[LUT_SIZE][LUT_SIZE][4];
+} lutData;
 
 void DrawRectangle(struct tagRECT *rect) {
     float width = backBufferDesc.Width;
     float height = backBufferDesc.Height;
 
+    float screenLeft = rect->left / width;
+    float screenTop = rect->top / height;
+    float screenRight = rect->right / width;
+    float screenBottom = rect->bottom / height;
+
+    float left = screenLeft * 2 - 1;
+    float top = screenTop * -2 + 1;
+    float right = screenRight * 2 - 1;
+    float bottom = screenBottom * -2 + 1;
+
+    width = textureDesc.Width;
+    height = textureDesc.Height;
     float texLeft = rect->left / width;
     float texTop = rect->top / height;
     float texRight = rect->right / width;
     float texBottom = rect->bottom / height;
-
-    float left = texLeft * 2 - 1;
-    float top = texTop * -2 + 1;
-    float right = texRight * 2 - 1;
-    float bottom = texBottom * -2 + 1;
 
     float vertexData[] = {
             left, bottom, texLeft, texBottom,
@@ -174,11 +189,16 @@ void DrawRectangle(struct tagRECT *rect) {
     deviceContext->lpVtbl->Draw(deviceContext, numVerts, 0);
 }
 
-float lut[LUT_SIZE][LUT_SIZE][LUT_SIZE][4];
+size_t numLuts;
+bool singleLutMode;
 
-bool parseCubeLut(char *filename) {
+lutData luts[32];
+
+bool AddLUT(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) return false;
+
+    float (*rawLut)[LUT_SIZE][LUT_SIZE][4] = malloc(LUT_SIZE * sizeof(*luts[0].rawLut));
 
     for (int b = 0; b < LUT_SIZE; b++) {
         for (int g = 0; g < LUT_SIZE; g++) {
@@ -189,6 +209,7 @@ bool parseCubeLut(char *filename) {
                 while (!gotLine) {
                     if (!fgets(line, sizeof(line), file)) {
                         fclose(file);
+                        free(rawLut);
                         return false;
                     }
                     if (line[0] >= ',' && line[0] <= '9') {
@@ -196,13 +217,14 @@ bool parseCubeLut(char *filename) {
 
                         if (sscanf(line, "%f%f%f", &red, &green, &blue) != 3) {
                             fclose(file);
+                            free(rawLut);
                             return false;
                         }
 
-                        lut[b][g][r][0] = red;
-                        lut[b][g][r][1] = green;
-                        lut[b][g][r][2] = blue;
-                        lut[b][g][r][3] = 1;
+                        rawLut[b][g][r][0] = red;
+                        rawLut[b][g][r][1] = green;
+                        rawLut[b][g][r][2] = blue;
+                        rawLut[b][g][r][3] = 1;
 
                         gotLine = true;
                     }
@@ -211,7 +233,32 @@ bool parseCubeLut(char *filename) {
         }
     }
     fclose(file);
+    luts[numLuts++].rawLut = rawLut;
     return true;
+}
+
+void AddLUTs(char* folder) {
+    WIN32_FIND_DATAA findData;
+
+    char path[MAX_PATH];
+    strcpy(path, folder);
+    strcat(path, "\\*");
+    HANDLE hFind = FindFirstFileA(path, &findData);
+    do
+    {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            char filePath[MAX_PATH];
+            strcpy(filePath, folder);
+            strcat(filePath, "\\");
+            strcat(filePath, findData.cFileName);
+
+            sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top);
+
+            AddLUT(filePath);
+        }
+    }
+    while (FindNextFile(hFind, &findData) != 0);
 }
 
 void InitializeStuff(IDXGISwapChain *swapChain) {
@@ -275,15 +322,19 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         desc.Usage = D3D11_USAGE_IMMUTABLE;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-        D3D11_SUBRESOURCE_DATA initData;
-        initData.pSysMem = lut;
-        initData.SysMemPitch = sizeof(lut[0][0]);
-        initData.SysMemSlicePitch = sizeof(lut[0]);
+        for (int i = 0; i < numLuts; i++) {
+            D3D11_SUBRESOURCE_DATA initData;
+            initData.pSysMem = luts[i].rawLut;
+            initData.SysMemPitch = sizeof(luts[i].rawLut[0][0]);
+            initData.SysMemSlicePitch = sizeof(luts[i].rawLut[0]);
 
-        ID3D11Texture3D *tex;
-        device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
-        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &lutTextureView);
-        tex->lpVtbl->Release(tex);
+            ID3D11Texture3D *tex;
+            device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
+            device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &luts[i].lutTextureView);
+            tex->lpVtbl->Release(tex);
+            free(luts[i].rawLut);
+            luts[i].rawLut = NULL;
+        }
     }
     {
         D3D11_SAMPLER_DESC samplerDesc = {};
@@ -332,15 +383,6 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &bayerTextureView);
         tex->lpVtbl->Release(tex);
     }
-    {
-        D3D11_BUFFER_DESC bufferDesc = {};
-        bufferDesc.ByteWidth = 16;
-        bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-        bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-        bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-        device->lpVtbl->CreateBuffer(device, &bufferDesc, NULL, &constantBuffer);
-    }
 }
 
 void UninitializeStuff() {
@@ -354,13 +396,14 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(texture)
     RELEASE_IF_NOT_NULL(textureView)
     RELEASE_IF_NOT_NULL(lutSamplerState)
-    RELEASE_IF_NOT_NULL(lutTextureView)
     RELEASE_IF_NOT_NULL(bayerSamplerState)
     RELEASE_IF_NOT_NULL(bayerTextureView)
-    RELEASE_IF_NOT_NULL(constantBuffer)
+    for (int i = 0; i < numLuts; i++) {
+        RELEASE_IF_NOT_NULL(luts[i].lutTextureView)
+    }
 }
 
-void ApplyLUT(IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
+void ApplyLUT(lutData lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
     if (!device) {
         InitializeStuff(swapChain);
     }
@@ -369,37 +412,41 @@ void ApplyLUT(IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int num
     ID3D11RenderTargetView *renderTargetView;
 
     swapChain->lpVtbl->GetBuffer(swapChain, 0, &IID_ID3D11Texture2D, (void **) &backBuffer);
-    device->lpVtbl->CreateRenderTargetView(device, (ID3D11Resource *) backBuffer, NULL, &renderTargetView);
 
     {
-        D3D11_TEXTURE2D_DESC texDesc;
-        backBuffer->lpVtbl->GetDesc(backBuffer, &texDesc);
+        D3D11_TEXTURE2D_DESC newBackBufferDesc;
+        backBuffer->lpVtbl->GetDesc(backBuffer, &newBackBufferDesc);
 
-        if (backBufferDesc.Width != texDesc.Width || backBufferDesc.Height != texDesc.Height || backBufferDesc.Format != texDesc.Format) {
-            if (backBufferDesc.Format != texDesc.Format) {
-                D3D11_MAPPED_SUBRESOURCE mappedResource;
-                deviceContext->lpVtbl->Map(deviceContext, (ID3D11Resource *) constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-                int value = texDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM;
-                memcpy(mappedResource.pData, &value, sizeof(value));
-                deviceContext->lpVtbl->Unmap(deviceContext, (ID3D11Resource *) constantBuffer, 0);
-            }
+        if (newBackBufferDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+            backBuffer->lpVtbl->Release(backBuffer);
+            return;
+        }
 
-            backBufferDesc = texDesc;
-
-            texDesc.Usage = D3D11_USAGE_DEFAULT;
-            texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-            texDesc.CPUAccessFlags = 0;
-            texDesc.MiscFlags = 0;
-
+        if (newBackBufferDesc.Width > textureDesc.Width || newBackBufferDesc.Height > textureDesc.Height) {
             if (texture != NULL) {
                 texture->lpVtbl->Release(texture);
                 textureView->lpVtbl->Release(textureView);
             }
 
-            device->lpVtbl->CreateTexture2D(device, &texDesc, NULL, &texture);
+            UINT newWidth = max(newBackBufferDesc.Width, textureDesc.Width);
+            UINT newHeight = max(newBackBufferDesc.Height, textureDesc.Height);
+
+            textureDesc = newBackBufferDesc;
+            textureDesc.Width = newWidth;
+            textureDesc.Height = newHeight;
+            textureDesc.Usage = D3D11_USAGE_DEFAULT;
+            textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            textureDesc.CPUAccessFlags = 0;
+            textureDesc.MiscFlags = 0;
+
+            device->lpVtbl->CreateTexture2D(device, &textureDesc, NULL, &texture);
             device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) texture, NULL, &textureView);
         }
+
+        backBufferDesc = newBackBufferDesc;
     }
+
+    device->lpVtbl->CreateRenderTargetView(device, (ID3D11Resource *) backBuffer, NULL, &renderTargetView);
 
     deviceContext->lpVtbl->RSSetViewports(deviceContext, 1, &(D3D11_VIEWPORT) {0, 0, backBufferDesc.Width, backBufferDesc.Height, 0.0f, 1.0f});
 
@@ -415,13 +462,11 @@ void ApplyLUT(IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int num
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lutTextureView);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut.lutTextureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &lutSamplerState);
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 2, 1, &bayerSamplerState);
-
-    deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
 
     for (int i = 0; i < numRects; i++) {
         D3D11_BOX sourceRegion;
@@ -451,7 +496,19 @@ COverlayContext_Present_t *COverlayContext_Present_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
-    ApplyLUT(swapChain, rectVec->start, rectVec->end - rectVec->start);
+    struct tagRECT *rect = (struct tagRECT*) ((unsigned char*) this + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
+
+    if (singleLutMode) {
+        ApplyLUT(luts[0], swapChain, rectVec->start, rectVec->end - rectVec->start);
+    }
+    else {
+        for (int i = 0; i < numLuts; i++) {
+            if (luts[i].left == rect->left && luts[i].top == rect->top) {
+                ApplyLUT(luts[i], swapChain, rectVec->start, rectVec->end - rectVec->start);
+            }
+        }
+    }
+
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
 
@@ -492,10 +549,17 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             }
 
             char lutPath[MAX_PATH];
-            ExpandEnvironmentStringsA("%SYSTEMROOT%\\Temp\\lut.cube", lutPath, sizeof(lutPath));
-            bool parsedLut = parseCubeLut(lutPath);
+            ExpandEnvironmentStringsA(BASEPATH LUT_NAME, lutPath, sizeof(lutPath));
+            singleLutMode = AddLUT(lutPath);
 
-            if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && parsedLut) {
+            if (!singleLutMode)
+            {
+                char lutFolderPath[MAX_PATH];
+                ExpandEnvironmentStringsA(BASEPATH LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
+                AddLUTs(lutFolderPath);
+            }
+
+            if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && numLuts != 0) {
                 MH_Initialize();
                 MH_CreateHook((PVOID) COverlayContext_Present_orig, (PVOID) COverlayContext_Present_hook, (PVOID *) &COverlayContext_Present_orig);
                 MH_CreateHook((PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_orig, (PVOID) COverlayContext_IsCandidateDirectFlipCompatbile_hook, NULL);
