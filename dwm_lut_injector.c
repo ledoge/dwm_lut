@@ -31,17 +31,17 @@ void GetDebugPrivilege() {
     CloseHandle(hToken);
 }
 
-bool FileExists(char* path) {
+bool FileExists(char *path) {
     DWORD attributes = GetFileAttributesA(path);
     return (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-bool FolderExists(char* path) {
+bool FolderExists(char *path) {
     DWORD attributes = GetFileAttributesA(path);
     return (attributes != INVALID_FILE_ATTRIBUTES && attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-bool CopyFolder(char* source, char* dest) {
+bool CopyFolder(char *source, char *dest) {
     SHFILEOPSTRUCTA s = {};
     s.wFunc = FO_COPY;
     s.fFlags = FOF_NO_UI;
@@ -55,7 +55,7 @@ bool CopyFolder(char* source, char* dest) {
     return !SHFileOperation(&s);
 }
 
-void ClearAllPermissions(char* folder) {
+void ClearAllPermissions(char *folder) {
     WIN32_FIND_DATAA findData;
 
     char path[MAX_PATH];
@@ -63,10 +63,8 @@ void ClearAllPermissions(char* folder) {
     strcat(path, "\\*");
 
     HANDLE hFind = FindFirstFileA(path, &findData);
-    do
-    {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
+    do {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char filePath[MAX_PATH];
             strcpy(filePath, folder);
             strcat(filePath, "\\");
@@ -74,13 +72,12 @@ void ClearAllPermissions(char* folder) {
 
             ClearPermissions(filePath);
         }
-    }
-    while (FindNextFile(hFind, &findData) != 0);
+    } while (FindNextFile(hFind, &findData) != 0);
 
     ClearPermissions(folder);
 }
 
-bool DeleteFolder(char* path) {
+bool DeleteFolder(char *path) {
     SHFILEOPSTRUCTA s = {};
     s.wFunc = FO_DELETE;
     s.fFlags = FOF_NO_UI;
@@ -154,16 +151,14 @@ int main(int argc, char *argv[]) {
                         return 1;
                     }
                     ClearPermissions(lutPath);
-                }
-                else if (FolderExists(LUT_FOLDER)){
+                } else if (FolderExists(LUT_FOLDER)) {
                     singleLutMode = false;
                     if (!CopyFolder(LUT_FOLDER, lutFolderPath)) {
                         fprintf(stderr, "Failed to copy " LUT_FOLDER " folder.\n");
                         return 1;
                     }
                     ClearAllPermissions(lutFolderPath);
-                }
-                else {
+                } else {
                     fprintf(stderr, "No " LUT_NAME " file or " LUT_FOLDER " folder found.\n");
                     return 1;
                 }
@@ -188,8 +183,7 @@ int main(int argc, char *argv[]) {
                             GetExitCodeThread(thread, &exitCode);
                             if (exitCode == 0) {
                                 fprintf(stderr, "Failed to load or initialize DLL.\n");
-                            }
-                            else {
+                            } else {
                                 didInject |= true;
                             }
 
@@ -210,12 +204,10 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "LUT does not seem to be loaded - did nothing.\n");
                     return 1;
                 }
-            }
-            else if (doInject) {
+            } else if (doInject) {
                 if (singleLutMode) {
                     DeleteFileA(lutPath);
-                }
-                else {
+                } else {
                     DeleteFolder(lutFolderPath);
                 }
                 if (!didInject) {
