@@ -237,7 +237,7 @@ bool AddLUT(char *filename) {
     return true;
 }
 
-void AddLUTs(char* folder) {
+void AddLUTs(char *folder) {
     WIN32_FIND_DATAA findData;
 
     char path[MAX_PATH];
@@ -245,10 +245,8 @@ void AddLUTs(char* folder) {
     strcat(path, "\\*");
     HANDLE hFind = FindFirstFileA(path, &findData);
     if (hFind == INVALID_HANDLE_VALUE) return;
-    do
-    {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
+    do {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char filePath[MAX_PATH];
             strcpy(filePath, folder);
             strcat(filePath, "\\");
@@ -258,8 +256,7 @@ void AddLUTs(char* folder) {
                 AddLUT(filePath);
             }
         }
-    }
-    while (FindNextFile(hFind, &findData) != 0);
+    } while (FindNextFile(hFind, &findData) != 0);
 }
 
 void InitializeStuff(IDXGISwapChain *swapChain) {
@@ -497,12 +494,11 @@ COverlayContext_Present_t *COverlayContext_Present_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
-    struct tagRECT *rect = (struct tagRECT*) ((unsigned char*) this + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
+    struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) this + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
 
     if (singleLutMode) {
         ApplyLUT(luts[0], swapChain, rectVec->start, rectVec->end - rectVec->start);
-    }
-    else {
+    } else {
         for (int i = 0; i < numLuts; i++) {
             if (luts[i].left == rect->left && luts[i].top == rect->top) {
                 ApplyLUT(luts[i], swapChain, rectVec->start, rectVec->end - rectVec->start);
@@ -553,8 +549,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             ExpandEnvironmentStringsA(BASEPATH LUT_NAME, lutPath, sizeof(lutPath));
             singleLutMode = AddLUT(lutPath);
 
-            if (!singleLutMode)
-            {
+            if (!singleLutMode) {
                 char lutFolderPath[MAX_PATH];
                 ExpandEnvironmentStringsA(BASEPATH LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
                 AddLUTs(lutFolderPath);
