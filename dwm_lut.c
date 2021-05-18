@@ -111,13 +111,13 @@ char shaders[] = _STRINGIFY(
         }
 
         float4 PS(VS_OUTPUT input) : SV_TARGET {
-            float4 sample = backBufferTex.Sample(backBufferSmp, input.tex);
+            float3 sample = backBufferTex.Sample(backBufferSmp, input.tex).rgb;
 
-            float3 res = LutTransformTetrahedral(sample.rgb);
+            float3 res = LutTransformTetrahedral(sample);
 
             res = OrderedDither(res, input.pos.xy);
 
-            return float4(res, sample.a);
+            return float4(res, 1);
         }
 );
 
