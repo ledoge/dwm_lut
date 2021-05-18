@@ -147,7 +147,7 @@ ID3D11ShaderResourceView *bayerTextureView;
 typedef struct lutData {
     int left;
     int top;
-    ID3D11ShaderResourceView *lutTextureView;
+    ID3D11ShaderResourceView *textureView;
     float (*rawLut)[LUT_SIZE][LUT_SIZE][4];
 } lutData;
 
@@ -244,6 +244,7 @@ void AddLUTs(char* folder) {
     strcpy(path, folder);
     strcat(path, "\\*");
     HANDLE hFind = FindFirstFileA(path, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) return;
     do
     {
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
@@ -253,9 +254,9 @@ void AddLUTs(char* folder) {
             strcat(filePath, "\\");
             strcat(filePath, findData.cFileName);
 
-            sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top);
-
-            AddLUT(filePath);
+            if (sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top) == 2) {
+                AddLUT(filePath);
+            }
         }
     }
     while (FindNextFile(hFind, &findData) != 0);
@@ -330,7 +331,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
 
             ID3D11Texture3D *tex;
             device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
-            device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &luts[i].lutTextureView);
+            device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &luts[i].textureView);
             tex->lpVtbl->Release(tex);
             free(luts[i].rawLut);
             luts[i].rawLut = NULL;
@@ -399,7 +400,7 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(bayerSamplerState)
     RELEASE_IF_NOT_NULL(bayerTextureView)
     for (int i = 0; i < numLuts; i++) {
-        RELEASE_IF_NOT_NULL(luts[i].lutTextureView)
+        RELEASE_IF_NOT_NULL(luts[i].textureView)
     }
 }
 
@@ -462,7 +463,7 @@ void ApplyLUT(lutData lut, IDXGISwapChain *swapChain, struct tagRECT *rects, uns
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut.lutTextureView);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut.textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &lutSamplerState);
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
