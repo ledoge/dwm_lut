@@ -582,7 +582,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
         }
         case DLL_PROCESS_DETACH:
             MH_Uninitialize();
-            Sleep(20);
+            Sleep(100);
             UninitializeStuff();
             break;
         default:
