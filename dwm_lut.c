@@ -36,17 +36,15 @@ char shaders[] = _STRINGIFY(
         };
 
         Texture2D backBufferTex : register(t0);
-        SamplerState backBufferSmp : register(s0);
-
         Texture3D lutTex : register(t1);
-        SamplerState lutSmp : register(s1);
+        SamplerState smp : register(s0);
 
         Texture2D bayerTex : register(t2);
-        SamplerState bayerSmp : register(s2);
+        SamplerState bayerSmp : register(s1);
 
         float3 S(float lutR, float lutG, float lutB) {
             float3 tex = float3(lutR, lutG, lutB) / LUT_SIZE + 0.5 / (LUT_SIZE - 1);
-            return lutTex.Sample(lutSmp, tex).rgb;
+            return lutTex.Sample(smp, tex).rgb;
         }
 
         // https://www.filmlight.ltd.uk/pdf/whitepapers/FL-TL-TN-0057-SoftwareLib.pdf
@@ -109,7 +107,7 @@ char shaders[] = _STRINGIFY(
         }
 
         float4 PS(VS_OUTPUT input) : SV_TARGET {
-            float3 sample = backBufferTex.Sample(backBufferSmp, input.tex).rgb;
+            float3 sample = backBufferTex.Sample(smp, input.tex).rgb;
 
             float3 res = LutTransformTetrahedral(sample);
 
@@ -136,8 +134,6 @@ D3D11_TEXTURE2D_DESC textureDesc;
 ID3D11SamplerState *samplerState;
 ID3D11Texture2D *texture;
 ID3D11ShaderResourceView *textureView;
-
-ID3D11SamplerState *lutSamplerState;
 
 ID3D11SamplerState *bayerSamplerState;
 ID3D11ShaderResourceView *bayerTextureView;
@@ -313,14 +309,6 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         device->lpVtbl->CreateSamplerState(device, &samplerDesc, &samplerState);
     }
     {
-        D3D11_SAMPLER_DESC samplerDesc = {};
-        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
-        samplerDesc.AddressU = samplerDesc.AddressV = samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-        samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-
-        device->lpVtbl->CreateSamplerState(device, &samplerDesc, &lutSamplerState);
-    }
-    {
         D3D11_TEXTURE3D_DESC desc = {};
         desc.Width = LUT_SIZE;
         desc.Height = LUT_SIZE;
@@ -403,7 +391,6 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(samplerState)
     RELEASE_IF_NOT_NULL(texture)
     RELEASE_IF_NOT_NULL(textureView)
-    RELEASE_IF_NOT_NULL(lutSamplerState)
     RELEASE_IF_NOT_NULL(bayerSamplerState)
     RELEASE_IF_NOT_NULL(bayerTextureView)
     for (int i = 0; i < numLuts; i++) {
@@ -468,13 +455,11 @@ void ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
     deviceContext->lpVtbl->PSSetShader(deviceContext, pixelShader, NULL, 0);
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut->textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut->textureView);
-    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &lutSamplerState);
-
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
-    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 2, 1, &bayerSamplerState);
+    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &bayerSamplerState);
 
     for (int i = 0; i < numRects; i++) {
         D3D11_BOX sourceRegion;
