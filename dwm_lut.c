@@ -171,7 +171,7 @@ void DrawRectangle(struct tagRECT *rect) {
 size_t numLuts;
 bool singleLutMode;
 
-lutData luts[32];
+lutData luts[MAX_LUTS];
 
 bool AddLUT(char *filename) {
     FILE *file = fopen(filename, "r");
@@ -235,7 +235,29 @@ void AddLUTs(char *folder) {
                 AddLUT(filePath);
             }
         }
-    } while (FindNextFile(hFind, &findData) != 0 && numLuts < sizeof(luts) / sizeof(luts[0]));
+    } while (FindNextFile(hFind, &findData) != 0 && numLuts < MAX_LUTS);
+    FindClose(hFind);
+}
+
+size_t legacyRenderTargetIndex;
+size_t trackedLegacyRenderTargets;
+void *CLegacyRenderTargets[MAX_LUTS];
+
+bool IsCLegacyRenderTarget(void *address) {
+    for (int i = 0; i < trackedLegacyRenderTargets; i++) {
+        if (CLegacyRenderTargets[i] == address) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void AddCLegacyRenderTarget(void *address) {
+    if (!IsCLegacyRenderTarget(address)) {
+        CLegacyRenderTargets[legacyRenderTargetIndex++] = address;
+        trackedLegacyRenderTargets = max(trackedLegacyRenderTargets, legacyRenderTargetIndex);
+        legacyRenderTargetIndex %= MAX_LUTS;
+    }
 }
 
 lutData *GetLUTDataFromCOverlayContext(void *context) {
@@ -471,15 +493,19 @@ typedef struct rectVec {
 typedef long(COverlayContext_Present_t)(void *, void *, unsigned int, rectVec *, unsigned int, bool);
 
 COverlayContext_Present_t *COverlayContext_Present_orig;
+COverlayContext_Present_t *COverlayContext_Present_real_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
-    IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
+    if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
+        AddCLegacyRenderTarget(this);
 
-    lutData *lut = GetLUTDataFromCOverlayContext(this);
-    if (lut != NULL) {
-        ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start);
+        IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
+
+        lutData *lut = GetLUTDataFromCOverlayContext(this);
+        if (lut != NULL) {
+            ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start);
+        }
     }
-
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
 
@@ -488,8 +514,10 @@ typedef bool(COverlayContext_IsCandidateDirectFlipCompatbile_t)(void *, void *, 
 COverlayContext_IsCandidateDirectFlipCompatbile_t *COverlayContext_IsCandidateDirectFlipCompatbile_orig;
 
 bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void *this, void *a2, void *a3, void *a4, int a5, unsigned int a6, bool a7, bool a8) {
-    if (GetLUTDataFromCOverlayContext(this)) {
-        return false;
+    if (IsCLegacyRenderTarget(this)) {
+        if (GetLUTDataFromCOverlayContext(this)) {
+            return false;
+        }
     }
     return COverlayContext_IsCandidateDirectFlipCompatbile_orig(this, a2, a3, a4, a5, a6, a7, a8);
 }
@@ -499,8 +527,10 @@ typedef bool(COverlayContext_OverlaysEnabled_t)(void *);
 COverlayContext_OverlaysEnabled_t *COverlayContext_OverlaysEnabled_orig;
 
 bool COverlayContext_OverlaysEnabled_hook(void *this) {
-    if (GetLUTDataFromCOverlayContext(this)) {
-        return false;
+    if (IsCLegacyRenderTarget(this)) {
+        if (GetLUTDataFromCOverlayContext(this)) {
+            return false;
+        }
     }
     return COverlayContext_OverlaysEnabled_orig(this);
 }
@@ -516,6 +546,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 unsigned char *address = (unsigned char *) dwmcore + i;
                 if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
                     COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
+                    COverlayContext_Present_real_orig = COverlayContext_Present_orig;
                 } else if (!COverlayContext_IsCandidateDirectFlipCompatbile_orig && !memcmp(address, COverlayContext_IsCandidateDirectFlipCompatbile_bytes, sizeof(COverlayContext_IsCandidateDirectFlipCompatbile_bytes))) {
                     static int found = 0;
                     found++;
