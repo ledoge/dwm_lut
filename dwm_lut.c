@@ -13,8 +13,6 @@
 #define STRINGIFY(x) #x
 #define _STRINGIFY(x) STRINGIFY(x)
 
-#define LUT_SIZE 65
-
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
 const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 
@@ -24,6 +22,8 @@ const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32,
 const int COverlayContext_CLegacyRenderTarget_offset = -0x150;
 const int CLegacyRenderTarget_DeviceClipBox_offset = 0x30;
 
+#pragma push_macro("bool")
+#undef bool
 char shaders[] = _STRINGIFY(
         struct VS_INPUT {
             float2 pos: POSITION;
@@ -42,54 +42,38 @@ char shaders[] = _STRINGIFY(
         Texture2D bayerTex : register(t2);
         SamplerState bayerSmp : register(s1);
 
-        float3 S(float lutR, float lutG, float lutB) {
-            float3 tex = float3(lutR, lutG, lutB) / LUT_SIZE + 0.5 / (LUT_SIZE - 1);
+        float3 SampleLut(float3 index) {
+            float3 tex = index / LUT_SIZE + 0.5 / LUT_SIZE;
             return lutTex.Sample(smp, tex).rgb;
         }
 
-        // https://www.filmlight.ltd.uk/pdf/whitepapers/FL-TL-TN-0057-SoftwareLib.pdf
+        // adapted from https://doi.org/10.2312/egp.20211031
+        void barycentricWeight(float3 r, out float4 bary, out int3 vert2, out int3 vert3) {
+            vert2 = int3(0,0,0); vert3 = int3(1,1,1);
+            int3 c = r.xyz >= r.yzx;
+            bool c_xy = c.x; bool c_yz = c.y; bool c_zx = c.z;
+            bool c_yx =!c.x; bool c_zy =!c.y; bool c_xz =!c.z;
+            bool cond;  float3 s = float3(0,0,0);
+        #define ORDER(X, Y, Z)                   \
+            cond = c_ ## X ## Y && c_ ## Y ## Z; \
+            s = cond ? r.X ## Y ## Z : s;        \
+            vert2.X = cond ? 1 : vert2.X;        \
+            vert3.Z = cond ? 0 : vert3.Z;
+            ORDER(x,y,z)   ORDER(x,z,y)   ORDER(z,x,y)
+            ORDER(z,y,x)   ORDER(y,z,x)   ORDER(y,x,z)
+            bary = float4(1 - s.x, s.z, s.x - s.y, s.y - s.z);
+        }
+
         float3 LutTransformTetrahedral(float3 rgb) {
             float3 lutIndex = rgb * (LUT_SIZE - 1);
-            float3 n = floor(lutIndex);
-            float3 f = frac(lutIndex);
+            float4 bary; int3 vert2; int3 vert3;
+            barycentricWeight(frac(lutIndex), bary, vert2, vert3);
 
-            float3 Sxyz;
-            if (f.x > f.y) {
-                if (f.y > f.z) {
-                    Sxyz = (1 - f.x) * S(n.x, n.y, n.z)
-                           + (f.x - f.y) * S(n.x + 1, n.y, n.z)
-                           + (f.y - f.z) * S(n.x + 1, n.y + 1, n.z)
-                           + (f.z) * S(n.x + 1, n.y + 1, n.z + 1);
-                } else if (f.x > f.z) {
-                    Sxyz = (1 - f.x) * S(n.x, n.y, n.z)
-                           + (f.x - f.z) * S(n.x + 1, n.y, n.z)
-                           + (f.z - f.y) * S(n.x + 1, n.y, n.z + 1)
-                           + (f.y) * S(n.x + 1, n.y + 1, n.z + 1);
-                } else {
-                    Sxyz = (1 - f.z) * S(n.x, n.y, n.z)
-                           + (f.z - f.x) * S(n.x, n.y, n.z + 1)
-                           + (f.x - f.y) * S(n.x + 1, n.y, n.z + 1)
-                           + (f.y) * S(n.x + 1, n.y + 1, n.z + 1);
-                }
-            } else {
-                if (f.z > f.y) {
-                    Sxyz = (1 - f.z) * S(n.x, n.y, n.z)
-                           + (f.z - f.y) * S(n.x, n.y, n.z + 1)
-                           + (f.y - f.x) * S(n.x, n.y + 1, n.z + 1)
-                           + (f.x) * S(n.x + 1, n.y + 1, n.z + 1);
-                } else if (f.z > f.x) {
-                    Sxyz = (1 - f.y) * S(n.x, n.y, n.z)
-                           + (f.y - f.z) * S(n.x, n.y + 1, n.z)
-                           + (f.z - f.x) * S(n.x, n.y + 1, n.z + 1)
-                           + (f.x) * S(n.x + 1, n.y + 1, n.z + 1);
-                } else {
-                    Sxyz = (1 - f.y) * S(n.x, n.y, n.z)
-                           + (f.y - f.x) * S(n.x, n.y + 1, n.z)
-                           + (f.x - f.z) * S(n.x + 1, n.y + 1, n.z)
-                           + (f.z) * S(n.x + 1, n.y + 1, n.z + 1);
-                }
-            }
-            return Sxyz;
+            float3 base = floor(lutIndex);
+            return bary.x * SampleLut(base) +
+                   bary.y * SampleLut(base + float3(1, 1, 1)) +
+                   bary.z * SampleLut(base + vert2) +
+                   bary.w * SampleLut(base + vert3);
         }
 
         float3 OrderedDither(float3 rgb, float2 pos) {
@@ -116,6 +100,7 @@ char shaders[] = _STRINGIFY(
             return float4(res, 1);
         }
 );
+#pragma pop_macro("bool")
 
 ID3D11Device *device;
 ID3D11DeviceContext *deviceContext;
