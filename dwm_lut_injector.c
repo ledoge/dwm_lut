@@ -38,7 +38,7 @@ bool FolderExists(char *path) {
     return (attributes != INVALID_FILE_ATTRIBUTES && attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-bool CopyFolder(char *source, char *dest) {
+bool CopyLUTFolder(char *source, char *dest) {
     SHFILEOPSTRUCTA s = {};
     s.wFunc = FO_COPY;
     s.fFlags = FOF_NO_UI;
@@ -46,7 +46,7 @@ bool CopyFolder(char *source, char *dest) {
 
     char from[MAX_PATH];
     strcpy(from, source);
-    strcat(from, "\\*");
+    strcat(from, "\\*" LUT_FILEEXT);
     s.pFrom = from;
 
     return !SHFileOperation(&s);
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
                     ClearPermissions(lutPath);
                 } else if (FolderExists(LUT_FOLDER)) {
                     singleLutMode = false;
-                    if (!CopyFolder(LUT_FOLDER, lutFolderPath)) {
+                    if (!CopyLUTFolder(LUT_FOLDER, lutFolderPath)) {
                         fprintf(stderr, "Failed to copy " LUT_FOLDER " folder.\n");
                         return 1;
                     }
