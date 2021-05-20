@@ -60,6 +60,7 @@ void ClearAllPermissions(char *folder) {
     strcat(path, "\\*");
 
     HANDLE hFind = FindFirstFileA(path, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) return;
     do {
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char filePath[MAX_PATH];
@@ -70,7 +71,8 @@ void ClearAllPermissions(char *folder) {
             ClearPermissions(filePath);
         }
     } while (FindNextFile(hFind, &findData) != 0);
-
+    FindClose(hFind);
+    
     ClearPermissions(folder);
 }
 
