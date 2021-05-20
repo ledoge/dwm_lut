@@ -239,24 +239,33 @@ void AddLUTs(char *folder) {
     FindClose(hFind);
 }
 
-size_t legacyRenderTargetIndex;
-size_t trackedLegacyRenderTargets;
-void *CLegacyRenderTargets[MAX_LUTS];
+size_t lutActiveTargetIndex;
+size_t trackedLutActiveTargets;
+void *lutActiveTargets[MAX_LUTS];
 
-bool IsCLegacyRenderTarget(void *address) {
-    for (int i = 0; i < trackedLegacyRenderTargets; i++) {
-        if (CLegacyRenderTargets[i] == address) {
+bool IsLUTActiveTarget(void *address) {
+    for (int i = 0; i < trackedLutActiveTargets; i++) {
+        if (lutActiveTargets[i] == address) {
             return true;
         }
     }
     return false;
 }
 
-void AddCLegacyRenderTarget(void *address) {
-    if (!IsCLegacyRenderTarget(address)) {
-        CLegacyRenderTargets[legacyRenderTargetIndex++] = address;
-        trackedLegacyRenderTargets = max(trackedLegacyRenderTargets, legacyRenderTargetIndex);
-        legacyRenderTargetIndex %= MAX_LUTS;
+void AddLUTActiveTarget(void *address) {
+    if (!IsLUTActiveTarget(address)) {
+        lutActiveTargets[lutActiveTargetIndex++] = address;
+        trackedLutActiveTargets = max(trackedLutActiveTargets, lutActiveTargetIndex);
+        lutActiveTargetIndex %= MAX_LUTS;
+    }
+}
+
+void RemoveLUTActiveTarget(void *address) {
+    for (int i = 0; i < trackedLutActiveTargets; i++) {
+        if (lutActiveTargets[i] == address) {
+            lutActiveTargets[i] = NULL;
+            return;
+        }
     }
 }
 
@@ -405,7 +414,7 @@ void UninitializeStuff() {
     }
 }
 
-void ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
+bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
     if (!device) {
         InitializeStuff(swapChain);
     }
@@ -421,7 +430,7 @@ void ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
 
         if (newBackBufferDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
             backBuffer->lpVtbl->Release(backBuffer);
-            return;
+            return false;
         }
 
         if (newBackBufferDesc.Width > textureDesc.Width || newBackBufferDesc.Height > textureDesc.Height) {
@@ -482,6 +491,7 @@ void ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
     }
 
     backBuffer->lpVtbl->Release(backBuffer);
+    return true;
 }
 
 typedef struct rectVec {
@@ -497,13 +507,14 @@ COverlayContext_Present_t *COverlayContext_Present_real_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
-        AddCLegacyRenderTarget(this);
-
         IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
 
         lutData *lut = GetLUTDataFromCOverlayContext(this);
-        if (lut != NULL) {
-            ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start);
+        if (lut != NULL && ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
+            AddLUTActiveTarget(this);
+        }
+        else {
+            RemoveLUTActiveTarget(this);
         }
     }
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
@@ -514,10 +525,8 @@ typedef bool(COverlayContext_IsCandidateDirectFlipCompatbile_t)(void *, void *, 
 COverlayContext_IsCandidateDirectFlipCompatbile_t *COverlayContext_IsCandidateDirectFlipCompatbile_orig;
 
 bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void *this, void *a2, void *a3, void *a4, int a5, unsigned int a6, bool a7, bool a8) {
-    if (IsCLegacyRenderTarget(this)) {
-        if (GetLUTDataFromCOverlayContext(this)) {
-            return false;
-        }
+    if (IsLUTActiveTarget(this)) {
+        return false;
     }
     return COverlayContext_IsCandidateDirectFlipCompatbile_orig(this, a2, a3, a4, a5, a6, a7, a8);
 }
@@ -527,10 +536,8 @@ typedef bool(COverlayContext_OverlaysEnabled_t)(void *);
 COverlayContext_OverlaysEnabled_t *COverlayContext_OverlaysEnabled_orig;
 
 bool COverlayContext_OverlaysEnabled_hook(void *this) {
-    if (IsCLegacyRenderTarget(this)) {
-        if (GetLUTDataFromCOverlayContext(this)) {
-            return false;
-        }
+    if (IsLUTActiveTarget(this)) {
+        return false;
     }
     return COverlayContext_OverlaysEnabled_orig(this);
 }
