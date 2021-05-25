@@ -1,4 +1,6 @@
 #define BASEPATH "%SYSTEMROOT%\\Temp\\"
+#define BAYER_SIZE 32
+#define DITHER_GAMMA 2.2
 #define DLL_NAME "dwm_lut.dll"
 #define LUT_FILEEXT ".cube"
 #define LUT_FOLDER "luts"

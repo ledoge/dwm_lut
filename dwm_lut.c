@@ -71,16 +71,24 @@ char shaders[] = _STRINGIFY(
 
             float3 base = floor(lutIndex);
             return bary.x * SampleLut(base) +
-                   bary.y * SampleLut(base + float3(1, 1, 1)) +
+                   bary.y * SampleLut(base + 1) +
                    bary.z * SampleLut(base + vert2) +
                    bary.w * SampleLut(base + vert3);
         }
 
         float3 OrderedDither(float3 rgb, float2 pos) {
-            float3 res = rgb + bayerTex.Sample(bayerSmp, pos / 8).x;
-            res = round(res * 255) / 255;
+            float3 low = floor(rgb * 255) / 255;
+            float3 high = low + 1.0 / 255;
 
-            return res;
+            float3 rgb_linear = pow(rgb, DITHER_GAMMA);
+            float3 low_linear = pow(low, DITHER_GAMMA);
+            float3 high_linear = pow(high, DITHER_GAMMA);
+
+            float noise = bayerTex.Sample(bayerSmp, pos / BAYER_SIZE).x;
+            float3 threshold = lerp(low_linear, high_linear, noise);
+
+            float3 dithered = lerp(low_linear, high_linear, rgb_linear > threshold);
+            return pow(dithered, 1.0 / DITHER_GAMMA);
         }
 
         VS_OUTPUT VS(VS_INPUT input) {
@@ -358,8 +366,8 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     }
     {
         D3D11_TEXTURE2D_DESC desc = {};
-        desc.Width = 8;
-        desc.Height = 8;
+        desc.Width = BAYER_SIZE;
+        desc.Height = BAYER_SIZE;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -368,21 +376,22 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         desc.Usage = D3D11_USAGE_IMMUTABLE;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-        float bayerMatrix[8][8] = {
-                { 0,32, 8,40, 2,34,10,42},
-                {48,16,56,24,50,18,58,26},
-                {12,44, 4,36,14,46, 6,38},
-                {60,28,52,20,62,30,54,22},
-                { 3,35,11,43, 1,33, 9,41},
-                {51,19,59,27,49,17,57,25},
-                {15,47, 7,39,13,45, 5,37},
-                {63,31,55,23,61,29,53,21},
-        };
+        float preCalculatedBayer[BAYER_SIZE][BAYER_SIZE];
 
-        float preCalculatedBayer[8][8];
-        for (int i = 0; i < 8; i++) {
-            for (int j = 0; j < 8; j++) {
-                preCalculatedBayer[i][j] = (1 / 64.0f * (bayerMatrix[i][j] - 63 / 2.0f)) / 255;
+        // adapted from https://bisqwit.iki.fi/story/howto/dither/jy/
+        const unsigned dim = BAYER_SIZE;
+        unsigned M = 0;
+        for (unsigned i = dim; i >>= 1;) {
+            M++;
+        }
+        for (unsigned y = 0; y < dim; ++y) {
+            for (unsigned x = 0; x < dim; ++x) {
+                unsigned v = 0, mask = M - 1, xc = x ^y, yc = y;
+                for (unsigned bit = 0; bit < 2 * M; --mask) {
+                    v |= ((yc >> mask) & 1) << bit++;
+                    v |= ((xc >> mask) & 1) << bit++;
+                }
+                preCalculatedBayer[x][y] = (v + 0.5f) / (dim * dim);
             }
         }
 
