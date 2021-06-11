@@ -87,8 +87,7 @@ char shaders[] = _STRINGIFY(
             float noise = bayerTex.Sample(bayerSmp, pos / BAYER_SIZE).x;
             float3 threshold = lerp(low_linear, high_linear, noise);
 
-            float3 dithered = lerp(low_linear, high_linear, rgb_linear > threshold);
-            return pow(dithered, 1.0 / DITHER_GAMMA);
+            return lerp(low, high, rgb_linear > threshold);
         }
 
         VS_OUTPUT VS(VS_INPUT input) {
