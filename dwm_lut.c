@@ -22,6 +22,16 @@ const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32,
 const int COverlayContext_CLegacyRenderTarget_offset = -0x150;
 const int CLegacyRenderTarget_DeviceClipBox_offset = 0x30;
 
+void DebugOut(char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char dbg_out[4096];
+    vsnprintf(dbg_out, sizeof(dbg_out), fmt, args);
+    va_end(args);
+    OutputDebugStringA(dbg_out);
+}
+
 #pragma push_macro("bool")
 #undef bool
 char shaders[] = _STRINGIFY(
@@ -239,7 +249,13 @@ void AddLUTs(char *folder) {
             strcat(filePath, findData.cFileName);
 
             if (sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top) == 2) {
-                AddLUT(filePath);
+                DebugOut("Attempting to add LUT %s...", findData.cFileName);
+                if (AddLUT(filePath)) {
+                    DebugOut("Success!");
+                }
+                else {
+                    DebugOut("Failed!");
+                }
             }
         }
     } while (FindNextFile(hFind, &findData) != 0 && numLuts < MAX_LUTS);
@@ -280,11 +296,15 @@ lutData *GetLUTDataFromCOverlayContext(void *context) {
     if (singleLutMode) return &luts[0];
 
     struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) context + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
+    DebugOut("Looking up LUT with coordinates %d,%d", rect->left, rect->top);
+
     for (int i = 0; i < numLuts; i++) {
         if (luts[i].left == rect->left && luts[i].top == rect->top) {
+            DebugOut("Found LUT!");
             return &luts[i];
         }
     }
+    DebugOut("Failed to find LUT.");
     return NULL;
 }
 
@@ -424,6 +444,7 @@ void UninitializeStuff() {
 
 bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
     if (!device) {
+        DebugOut("Initializing stuff...");
         InitializeStuff(swapChain);
     }
 
@@ -515,6 +536,7 @@ COverlayContext_Present_t *COverlayContext_Present_real_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
+        DebugOut("COverlayContext belongs to CLegacyRenderTarget");
         IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
 
         lutData *lut = GetLUTDataFromCOverlayContext(this);
@@ -524,6 +546,9 @@ long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned i
         else {
             RemoveLUTActiveTarget(this);
         }
+    }
+    else {
+        DebugOut("COverlayContext does not belong to CLegacyRenderTarget.");
     }
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
 }
@@ -581,9 +606,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             singleLutMode = AddLUT(lutPath);
 
             if (!singleLutMode) {
+                DebugOut("Failed to parse single LUT. Proceeding with multi LUT mode.");
                 char lutFolderPath[MAX_PATH];
                 ExpandEnvironmentStringsA(BASEPATH LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
                 AddLUTs(lutFolderPath);
+            }
+
+            else {
+                DebugOut("Using single LUT");
             }
 
             if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && numLuts != 0) {
