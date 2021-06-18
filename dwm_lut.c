@@ -7,7 +7,11 @@
 #include <stdio.h>
 #include <windows.h>
 
-#include "dwm_lut.h"
+#define BAYER_SIZE 32
+#define DITHER_GAMMA 2.2
+#define LUT_FOLDER "%SYSTEMROOT%\\Temp\\luts"
+#define LUT_SIZE 65
+#define MAX_LUTS 32
 
 #define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
 #define STRINGIFY(x) #x
@@ -176,7 +180,6 @@ void DrawRectangle(struct tagRECT *rect) {
 }
 
 size_t numLuts;
-bool singleLutMode;
 
 lutData luts[MAX_LUTS];
 
@@ -277,8 +280,6 @@ void RemoveLUTActiveTarget(void *address) {
 }
 
 lutData *GetLUTDataFromCOverlayContext(void *context) {
-    if (singleLutMode) return &luts[0];
-
     struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) context + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
     for (int i = 0; i < numLuts; i++) {
         if (luts[i].left == rect->left && luts[i].top == rect->top) {
@@ -576,15 +577,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 }
             }
 
-            char lutPath[MAX_PATH];
-            ExpandEnvironmentStringsA(BASEPATH LUT_NAME, lutPath, sizeof(lutPath));
-            singleLutMode = AddLUT(lutPath);
-
-            if (!singleLutMode) {
-                char lutFolderPath[MAX_PATH];
-                ExpandEnvironmentStringsA(BASEPATH LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
-                AddLUTs(lutFolderPath);
-            }
+            char lutFolderPath[MAX_PATH];
+            ExpandEnvironmentStringsA(LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
+            AddLUTs(lutFolderPath);
 
             if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && numLuts != 0) {
                 MH_Initialize();
