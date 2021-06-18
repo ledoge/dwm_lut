@@ -1,0 +1,64 @@
+﻿<Window x:Class="DwmLutGUI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DwmLutGUI"
+        mc:Ignorable="d"
+        Title="DwmLutGUI" Height="350" Width="525" MinHeight="150" MinWidth="300">
+    <Window.DataContext>
+        <local:MainViewModel />
+    </Window.DataContext>
+    <DockPanel>
+        <StatusBar DockPanel.Dock="bottom">
+            <TextBlock Text="{Binding ActiveText, StringFormat=Status: {0}}" />
+        </StatusBar>
+        <DockPanel Margin="6">
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="LUT file:" />
+                <TextBox IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}"
+                         Text="{Binding LutPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"
+                         Grid.Column="1" Width="Auto" Margin="6,0,6,0" />
+                <Button IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}" Grid.Column="2"
+                        Content="Browse..."
+                        Width="75" Margin="0,0,6,0" VerticalAlignment="Bottom" Click="LutBrowse_Click" />
+                <Button IsEnabled="{Binding LutPath, TargetNullValue=false}" Grid.Column="3" Content="Clear"
+                        Width="75" Click="LutClear_Click" />
+            </Grid>
+            <Grid DockPanel.Dock="Bottom">
+                <Button Content="Refresh" Width="75" HorizontalAlignment="Left"
+                        Click="MonitorRefreshButton_Click" />
+                <WrapPanel HorizontalAlignment="Right">
+                    <Button IsEnabled="{Binding CanApply}" Content="Apply" Width="75" Margin="0,0,6,0"
+                            Click="Apply_Click" />
+                    <Button Content="Disable" Width="75" IsEnabled="{Binding IsActive}"
+                            Click="Disable_Click" />
+                </WrapPanel>
+            </Grid>
+            <DataGrid SelectedItem="{Binding SelectedMonitor}" ItemsSource="{Binding Monitors}" RowHeaderWidth="0"
+                      IsReadOnly="True" AutoGenerateColumns="False" DockPanel.Dock="Bottom" Margin="0,0,0,6">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="#" Binding="{Binding SourceId}" />
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" />
+                    <DataGridTextColumn Header="Resolution" Binding="{Binding Resolution}" />
+                    <DataGridTextColumn Header="Refresh rate" Binding="{Binding RefreshRate}" />
+                    <DataGridTextColumn Header="Connector" Binding="{Binding Connector}" />
+                    <DataGridTextColumn Header="Position" Binding="{Binding Position}" />
+                    <DataGridTextColumn Header="LUT file" Width="*" Binding="{Binding LutFilename}">
+                        <DataGridTextColumn.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Margin" Value="0,0,-1,0" />
+                            </Style>
+                        </DataGridTextColumn.CellStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DockPanel>
+</Window>
