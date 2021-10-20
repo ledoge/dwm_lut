@@ -1,5 +1,5 @@
 # About
-This tool applies 3D LUTs to the Windows desktop by hooking into DWM, utilizing tetrahedral interpolation and ordered dithering. Right now it should work on any 20H2 or 21H1 build of Windows 10, and I'll try to update it whenever a new version breaks it.
+This tool applies 3D LUTs to the Windows desktop by hooking into DWM, utilizing tetrahedral interpolation and ordered dithering. Right now it should work on any 20H2 or 21H1 build of Windows 10, and also the current build of Windows 11, and I'll try to update it whenever a new version breaks it.
 
 # Usage
 Use DisplayCAL or similar to generate the 65x65x65 .cube LUT files you want to apply, run `DwmLutGUI.exe`, assign them to monitors and then click Apply.
