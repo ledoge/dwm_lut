@@ -5,7 +5,6 @@
 #include <psapi.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <windows.h>
 
 #define BAYER_SIZE 32
 #define DITHER_GAMMA 2.2
@@ -14,8 +13,8 @@
 #define MAX_LUTS 32
 
 #define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
-#define STRINGIFY(x) #x
-#define _STRINGIFY(x) STRINGIFY(x)
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
 
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
 const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
@@ -23,12 +22,21 @@ const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
 const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes[] = {0x48, 0x89, 0x7c, 0x24, 0x20, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x40};
 const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32, 0xc0, 0xc3, 0xcc, 0x83, 0x79, 0x30, 0x01, 0x0f, 0x97, 0xc0, 0xc3};
 
-const int COverlayContext_CLegacyRenderTarget_offset = -0x150;
-const int CLegacyRenderTarget_DeviceClipBox_offset = 0x30;
+const int COverlayContext_DeviceClipBox_offset = -0x120;
+
+const unsigned char COverlayContext_Present_bytes_w11[] = {0x48, 0x33, 0xc4, 0x48, 0x89, 0x44, 0x24, 0x50, 0x48, 0x8b, 0xb1, 0xa0, 0x2b, 0x00, 0x00, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6};
+const int IOverlaySwapChain_IDXGISwapChain_offset_w11 = -0x148;
+
+const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes_w11[] = {0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x68};
+const unsigned char COverlayContext_OverlaysEnabled_bytes_w11[] = {0x74, 0x09, 0x83, 0x79, 0x2c, 0x01, 0x0f, 0x97, 0xc0, 0xc3, 0xcc, 0x32, 0xc0, 0xc3};
+
+const int COverlayContext_DeviceClipBox_offset_w11 = 0x462c;
+
+bool isWindows11;
 
 #pragma push_macro("bool")
 #undef bool
-char shaders[] = _STRINGIFY(
+char shaders[] = STRINGIFY(
         struct VS_INPUT {
             float2 pos: POSITION;
             float2 tex: TEXCOORD;
@@ -280,9 +288,19 @@ void RemoveLUTActiveTarget(void *address) {
 }
 
 lutData *GetLUTDataFromCOverlayContext(void *context) {
-    struct tagRECT *rect = (struct tagRECT *) ((unsigned char *) context + COverlayContext_CLegacyRenderTarget_offset + CLegacyRenderTarget_DeviceClipBox_offset);
+    int left, top;
+    if (isWindows11) {
+        float *rect = (float *) ((unsigned char *) context + COverlayContext_DeviceClipBox_offset_w11);
+        left = (int) rect[0];
+        top = (int) rect[1];
+    } else {
+        int *rect = (int *) ((unsigned char *) context + COverlayContext_DeviceClipBox_offset);
+        left = rect[0];
+        top = rect[1];
+    }
+
     for (int i = 0; i < numLuts; i++) {
-        if (luts[i].left == rect->left && luts[i].top == rect->top) {
+        if (luts[i].left == left && luts[i].top == top) {
             return &luts[i];
         }
     }
@@ -516,13 +534,17 @@ COverlayContext_Present_t *COverlayContext_Present_real_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
-        IDXGISwapChain *swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
+        IDXGISwapChain *swapChain;
+        if (isWindows11) {
+            swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset_w11);
+        } else {
+            swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
+        }
 
         lutData *lut = GetLUTDataFromCOverlayContext(this);
         if (lut != NULL && ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
             AddLUTActiveTarget(this);
-        }
-        else {
+        } else {
             RemoveLUTActiveTarget(this);
         }
     }
@@ -558,22 +580,47 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             MODULEINFO moduleInfo;
             GetModuleInformation(GetCurrentProcess(), dwmcore, &moduleInfo, sizeof(moduleInfo));
 
-            for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
-                unsigned char *address = (unsigned char *) dwmcore + i;
-                if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
-                    COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
-                    COverlayContext_Present_real_orig = COverlayContext_Present_orig;
-                } else if (!COverlayContext_IsCandidateDirectFlipCompatbile_orig && !memcmp(address, COverlayContext_IsCandidateDirectFlipCompatbile_bytes, sizeof(COverlayContext_IsCandidateDirectFlipCompatbile_bytes))) {
-                    static int found = 0;
-                    found++;
-                    if (found == 2) {
-                        COverlayContext_IsCandidateDirectFlipCompatbile_orig = (COverlayContext_IsCandidateDirectFlipCompatbile_t *) (address - 0xa);
+            unsigned char *KUSER_SHARED_DATA = (unsigned char *) 0x7FFE0000;
+            ULONG NtBuildNumber = *(ULONG *) (KUSER_SHARED_DATA + 0x260);
+            isWindows11 = NtBuildNumber >= 22000;
+
+            if (isWindows11) {
+                for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes_w11); i++) {
+                    unsigned char *address = (unsigned char *) dwmcore + i;
+                    if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes_w11, sizeof(COverlayContext_Present_bytes_w11))) {
+                        COverlayContext_Present_orig = (COverlayContext_Present_t *) (address - 0xf);
+                        COverlayContext_Present_real_orig = COverlayContext_Present_orig;
+                    } else if (!COverlayContext_IsCandidateDirectFlipCompatbile_orig && !memcmp(address, COverlayContext_IsCandidateDirectFlipCompatbile_bytes_w11, sizeof(COverlayContext_IsCandidateDirectFlipCompatbile_bytes_w11))) {
+                        static int found = 0;
+                        found++;
+                        if (found == 2) {
+                            COverlayContext_IsCandidateDirectFlipCompatbile_orig = (COverlayContext_IsCandidateDirectFlipCompatbile_t *) address;
+                        }
+                    } else if (!COverlayContext_OverlaysEnabled_orig && !memcmp(address, COverlayContext_OverlaysEnabled_bytes_w11, sizeof(COverlayContext_OverlaysEnabled_bytes_w11))) {
+                        COverlayContext_OverlaysEnabled_orig = (COverlayContext_OverlaysEnabled_t *) (address - 0x7);
                     }
-                } else if (!COverlayContext_OverlaysEnabled_orig && !memcmp(address, COverlayContext_OverlaysEnabled_bytes, sizeof(COverlayContext_OverlaysEnabled_bytes))) {
-                    COverlayContext_OverlaysEnabled_orig = (COverlayContext_OverlaysEnabled_t *) (address - 0x7);
+                    if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig) {
+                        break;
+                    }
                 }
-                if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig) {
-                    break;
+            } else {
+                for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
+                    unsigned char *address = (unsigned char *) dwmcore + i;
+                    if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
+                        COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
+                        COverlayContext_Present_real_orig = COverlayContext_Present_orig;
+                    } else if (!COverlayContext_IsCandidateDirectFlipCompatbile_orig && !memcmp(address, COverlayContext_IsCandidateDirectFlipCompatbile_bytes, sizeof(COverlayContext_IsCandidateDirectFlipCompatbile_bytes))) {
+                        static int found = 0;
+                        found++;
+                        if (found == 2) {
+                            COverlayContext_IsCandidateDirectFlipCompatbile_orig = (COverlayContext_IsCandidateDirectFlipCompatbile_t *) (address - 0xa);
+                        }
+                    } else if (!COverlayContext_OverlaysEnabled_orig && !memcmp(address, COverlayContext_OverlaysEnabled_bytes, sizeof(COverlayContext_OverlaysEnabled_bytes))) {
+                        COverlayContext_OverlaysEnabled_orig = (COverlayContext_OverlaysEnabled_t *) (address - 0x7);
+                    }
+                    if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig) {
+                        break;
+                    }
                 }
             }
 
