@@ -455,7 +455,7 @@ bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
         D3D11_TEXTURE2D_DESC newBackBufferDesc;
         backBuffer->lpVtbl->GetDesc(backBuffer, &newBackBufferDesc);
 
-        if (newBackBufferDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+        if (newBackBufferDesc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
             backBuffer->lpVtbl->Release(backBuffer);
             return false;
         }
