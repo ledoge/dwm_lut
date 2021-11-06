@@ -36,7 +36,7 @@ bool isWindows11;
 
 #pragma push_macro("bool")
 #undef bool
-char shaders[] = STRINGIFY(
+char shaders[] = STRINGIFY((
         struct VS_INPUT {
             float2 pos: POSITION;
             float2 tex: TEXCOORD;
@@ -51,8 +51,23 @@ char shaders[] = STRINGIFY(
         Texture3D lutTex : register(t1);
         SamplerState smp : register(s0);
 
-        Texture2D bayerTex : register(t2);
-        SamplerState bayerSmp : register(s1);
+        static float3x3 bt709_to_bt2020 = {
+        17634161964.L / 28106554770.L, 9255011753.L / 28106554770.L,  1217381053.L / 28106554770.L,
+          459093558.L /  6644161620.L, 6109575001.L /  6644161620.L,    75493061.L /  6644161620.L,
+          330085584.L / 20137682025.L, 1772384008.L / 20137682025.L, 18035212433.L / 20137682025.L,
+        };
+
+        static float3x3 bt2020_to_bt709 = {
+         2785571537.L /  1677558947.L,  -985802650.L /  1677558947.L,  -122209940.L /  1677558947.L,
+        -4638020506.L / 37238079773.L, 42187016744.L / 37238079773.L,  -310916465.L / 37238079773.L,
+         -682283168.L / 37589778163.L, -3780738464.L / 37589778163.L, 42052799795.L / 37589778163.L,
+        };
+
+        static float m1 = 1305 / 8192.;
+        static float m2 = 2523 /   32.;
+        static float c1 =  107 /  128.;
+        static float c2 = 2413 /  128.;
+        static float c3 = 2392 /  128.;
 
         float3 SampleLut(float3 index) {
             float3 tex = index / LUT_SIZE + 0.5 / LUT_SIZE;
@@ -88,18 +103,12 @@ char shaders[] = STRINGIFY(
                    bary.w * SampleLut(base + vert3);
         }
 
-        float3 OrderedDither(float3 rgb, float2 pos) {
-            float3 low = floor(rgb * 255) / 255;
-            float3 high = low + 1.0 / 255;
+        float3 pq_eotf(float3 e) {
+            return pow(max((pow(e, 1 / m2) - c1), 0) / (c2 - c3 * pow(e, 1 / m2)), 1 / m1);
+        }
 
-            float3 rgb_linear = pow(rgb, DITHER_GAMMA);
-            float3 low_linear = pow(low, DITHER_GAMMA);
-            float3 high_linear = pow(high, DITHER_GAMMA);
-
-            float noise = bayerTex.Sample(bayerSmp, pos / BAYER_SIZE).x;
-            float3 threshold = lerp(low_linear, high_linear, noise);
-
-            return lerp(low, high, rgb_linear > threshold);
+        float3 pq_inv_eotf(float3 y) {
+            return pow((c1 + c2 * pow(y, m1)) / (1 + c3 * pow(y, m1)), m2);
         }
 
         VS_OUTPUT VS(VS_INPUT input) {
@@ -110,15 +119,17 @@ char shaders[] = STRINGIFY(
         }
 
         float4 PS(VS_OUTPUT input) : SV_TARGET {
-            float3 sample = backBufferTex.Sample(smp, input.tex).rgb;
+            float3 scrgb_sample = backBufferTex.Sample(smp, input.tex).rgb;
 
-            float3 res = LutTransformTetrahedral(sample);
+            float3 hdr10_sample = pq_inv_eotf(max(mul(bt709_to_bt2020, scrgb_sample * 80 / 10000), 0));
+            
+            float3 hdr10_res = LutTransformTetrahedral(hdr10_sample);
 
-            res = OrderedDither(res, input.pos.xy);
+            float3 scrgb_res = mul(bt2020_to_bt709, pq_eotf(hdr10_res)) * 10000 / 80;
 
-            return float4(res, 1);
+            return float4(scrgb_res, 1);
         }
-);
+));
 #pragma pop_macro("bool")
 
 ID3D11Device *device;
@@ -312,7 +323,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     device->lpVtbl->GetImmediateContext(device, &deviceContext);
     {
         ID3DBlob *vsBlob;
-        D3DCompile(shaders, sizeof(shaders), NULL, NULL, NULL, "VS", "vs_5_0", 0, 0, &vsBlob, NULL);
+        D3DCompile(shaders + 1, sizeof(shaders) - 3, NULL, NULL, NULL, "VS", "vs_5_0", 0, 0, &vsBlob, NULL);
         device->lpVtbl->CreateVertexShader(device, vsBlob->lpVtbl->GetBufferPointer(vsBlob), vsBlob->lpVtbl->GetBufferSize(vsBlob), NULL, &vertexShader);
         D3D11_INPUT_ELEMENT_DESC inputElementDesc[] =
                 {
@@ -325,7 +336,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
     }
     {
         ID3DBlob *psBlob;
-        D3DCompile(shaders, sizeof(shaders), NULL, NULL, NULL, "PS", "ps_5_0", 0, 0, &psBlob, NULL);
+        D3DCompile(shaders + 1, sizeof(shaders) - 3, NULL, NULL, NULL, "PS", "ps_5_0", 0, 0, &psBlob, NULL);
         device->lpVtbl->CreatePixelShader(device, psBlob->lpVtbl->GetBufferPointer(psBlob), psBlob->lpVtbl->GetBufferSize(psBlob), NULL, &pixelShader);
         psBlob->lpVtbl->Release(psBlob);
     }
