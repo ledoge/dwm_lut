@@ -18,7 +18,7 @@ namespace DwmLutGUI
         private bool _isActive;
 
         private readonly string _configPath;
-        private readonly Dictionary<uint, string> _config;
+        private readonly Dictionary<uint, string[]> _config;
 
         public MainViewModel()
         {
@@ -33,11 +33,12 @@ namespace DwmLutGUI
             {
                 var xElem = XElement.Load(_configPath);
                 _config = xElem.Descendants("monitor")
-                    .ToDictionary(x => (uint) x.Attribute("id"), x => (string) x.Attribute("lut"));
+                    .ToDictionary(x => (uint)x.Attribute("id"),
+                        x => new[] { (string)x.Attribute("sdr_lut"), (string)x.Attribute("hdr_lut") });
             }
             else
             {
-                _config = new Dictionary<uint, string>();
+                _config = new Dictionary<uint, string[]>();
             }
 
             Monitors = new ObservableCollection<MonitorData>();
@@ -64,35 +65,84 @@ namespace DwmLutGUI
                 if (value == _selectedMonitor) return;
                 _selectedMonitor = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(LutPath));
+                OnPropertyChanged(nameof(SdrLutPath));
+                OnPropertyChanged(nameof(HdrLutPath));
             }
             get => _selectedMonitor;
         }
 
-        public string LutPath
+        private void SaveConfig()
+        {
+            var xElem = new XElement("monitors",
+                _config.Select(x =>
+                    new XElement("monitor", new XAttribute("id", x.Key),
+                        x.Value[0] != null ? new XAttribute("sdr_lut", x.Value[0]) : null,
+                        x.Value[1] != null ? new XAttribute("hdr_lut", x.Value[1]) : null)));
+            xElem.Save(_configPath);
+        }
+
+        public string SdrLutPath
         {
             set
             {
-                if (SelectedMonitor == null || SelectedMonitor.LutPath == value) return;
-                SelectedMonitor.LutPath = value;
+                if (SelectedMonitor == null || SelectedMonitor.SdrLutPath == value) return;
+                SelectedMonitor.SdrLutPath = value;
                 OnPropertyChanged();
 
                 var key = SelectedMonitor.DeviceId;
                 if (!string.IsNullOrEmpty(value))
                 {
-                    _config[key] = value;
+                    if (!_config.ContainsKey(key))
+                    {
+                        _config[key] = new string[2];
+                    }
+
+                    _config[key][0] = value;
                 }
                 else
                 {
-                    _config.Remove(key);
+                    _config[key][0] = null;
+                    if (_config[key][1] == null)
+                    {
+                        _config.Remove(key);
+                    }
                 }
 
-                var xElem = new XElement("monitors",
-                    _config.Select(x =>
-                        new XElement("monitor", new XAttribute("id", x.Key), new XAttribute("lut", x.Value))));
-                xElem.Save(_configPath);
+                SaveConfig();
             }
-            get => SelectedMonitor?.LutPath;
+            get => SelectedMonitor?.SdrLutPath;
+        }
+
+        public string HdrLutPath
+        {
+            set
+            {
+                if (SelectedMonitor == null || SelectedMonitor.HdrLutPath == value) return;
+                SelectedMonitor.HdrLutPath = value;
+                OnPropertyChanged();
+
+                var key = SelectedMonitor.DeviceId;
+                if (!string.IsNullOrEmpty(value))
+                {
+                    if (!_config.ContainsKey(key))
+                    {
+                        _config[key] = new string[2];
+                    }
+
+                    _config[key][1] = value;
+                }
+                else
+                {
+                    _config[key][1] = null;
+                    if (_config[key][0] == null)
+                    {
+                        _config.Remove(key);
+                    }
+                }
+
+                SaveConfig();
+            }
+            get => SelectedMonitor?.HdrLutPath;
         }
 
         public bool IsActive
@@ -136,14 +186,20 @@ namespace DwmLutGUI
 
                 var position = path.Position.X + "," + path.Position.Y;
 
-                string lutPath = null;
+                string sdrLutPath = null;
+                string hdrLutPath = null;
                 if (_config.ContainsKey(deviceId))
                 {
-                    lutPath = _config[deviceId];
+                    sdrLutPath = _config[deviceId][0];
+                }
+
+                if (_config.ContainsKey(deviceId))
+                {
+                    hdrLutPath = _config[deviceId][1];
                 }
 
                 Monitors.Add(new MonitorData(deviceId, path.DisplaySource.SourceId + 1, name, resolution, refreshRate,
-                    connector, position, lutPath));
+                    connector, position, sdrLutPath, hdrLutPath));
             }
 
             if (selectedId == null) return;
@@ -158,7 +214,8 @@ namespace DwmLutGUI
         public void ReInject()
         {
             Injector.Uninject();
-            if (!Monitors.All(monitor => string.IsNullOrEmpty(monitor.LutPath)))
+            if (!Monitors.All(monitor =>
+                string.IsNullOrEmpty(monitor.SdrLutPath) && string.IsNullOrEmpty(monitor.HdrLutPath)))
             {
                 Injector.Inject(Monitors);
             }
@@ -177,8 +234,8 @@ namespace DwmLutGUI
             var status = Injector.GetStatus();
             if (status != null)
             {
-                IsActive = (bool) status;
-                ActiveText = (bool) status ? "Active" : "Inactive";
+                IsActive = (bool)status;
+                ActiveText = (bool)status ? "Active" : "Inactive";
             }
             else
             {

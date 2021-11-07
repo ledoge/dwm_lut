@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DwmLutGUI"
         mc:Ignorable="d"
-        Title="DwmLutGUI" Height="350" Width="525" MinHeight="150" MinWidth="300">
+        Title="DwmLutGUI" Height="400" Width="600" MinHeight="200" MinWidth="300">
     <Window.DataContext>
         <local:MainViewModel />
     </Window.DataContext>
@@ -15,21 +15,36 @@
         </StatusBar>
         <DockPanel Margin="6">
             <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="LUT file:" />
+                <TextBlock Margin="0,0,0,6" Text="SDR LUT:" />
                 <TextBox IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}"
-                         Text="{Binding LutPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"
-                         Grid.Column="1" Width="Auto" Margin="6,0,6,0" />
-                <Button IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}" Grid.Column="2"
+                         Text="{Binding SdrLutPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"
+                         Grid.Row="0" Grid.Column="1" Width="Auto" Margin="6,0,6,6" />
+                <Button IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}" Grid.Row="0" Grid.Column="2"
                         Content="Browse..."
-                        Width="75" Margin="0,0,6,0" VerticalAlignment="Bottom" Click="LutBrowse_Click" />
-                <Button IsEnabled="{Binding LutPath, TargetNullValue=false}" Grid.Column="3" Content="Clear"
-                        Width="75" Click="LutClear_Click" />
+                        Width="75" Margin="0,0,6,6" VerticalAlignment="Bottom" Click="SdrLutBrowse_Click" />
+                <Button IsEnabled="{Binding SdrLutPath, TargetNullValue=false}" Grid.Row="0" Grid.Column="3"
+                        Content="Clear"
+                        Width="75" Margin="0,0,0,6" Click="SdrLutClear_Click" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="HDR LUT:" />
+                <TextBox Grid.Row="1" IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}"
+                         Text="{Binding HdrLutPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"
+                         Grid.Column="1" Width="Auto" Margin="6,0,6,0" />
+                <Button Grid.Row="1" IsEnabled="{Binding SelectedMonitor, TargetNullValue=false}" Grid.Column="2"
+                        Content="Browse..."
+                        Width="75" Margin="0,0,6,0" VerticalAlignment="Bottom" Click="HdrLutBrowse_Click" />
+                <Button Grid.Row="1" IsEnabled="{Binding HdrLutPath, TargetNullValue=false}" Grid.Column="3"
+                        Content="Clear"
+                        Width="75" Click="HdrLutClear_Click" />
             </Grid>
             <Grid DockPanel.Dock="Bottom">
                 <Button Content="Refresh" Width="75" HorizontalAlignment="Left"
@@ -50,7 +65,8 @@
                     <DataGridTextColumn Header="Refresh rate" Binding="{Binding RefreshRate}" />
                     <DataGridTextColumn Header="Connector" Binding="{Binding Connector}" />
                     <DataGridTextColumn Header="Position" Binding="{Binding Position}" />
-                    <DataGridTextColumn Header="LUT file" Width="*" Binding="{Binding LutFilename}">
+                    <DataGridTextColumn Header="SDR LUT" Width="*" Binding="{Binding SdrLutFilename}" />
+                    <DataGridTextColumn Header="HDR LUT" Width="*" Binding="{Binding HdrLutFilename}">
                         <DataGridTextColumn.CellStyle>
                             <Style TargetType="DataGridCell">
                                 <Setter Property="Margin" Value="0,0,-1,0" />

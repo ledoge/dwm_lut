@@ -82,10 +82,19 @@ namespace DwmLutGUI
 
             foreach (var monitor in monitors)
             {
-                if (string.IsNullOrEmpty(monitor.LutPath)) continue;
-                var path = LutsPath + monitor.Position.Replace(',', '_') + ".cube";
-                File.Copy(monitor.LutPath, path);
-                ClearPermissions(path);
+                if (!string.IsNullOrEmpty(monitor.SdrLutPath))
+                {
+                    var path = LutsPath + monitor.Position.Replace(',', '_') + ".cube";
+                    File.Copy(monitor.SdrLutPath, path);
+                    ClearPermissions(path);
+                }
+
+                if (string.IsNullOrEmpty(monitor.HdrLutPath)) continue;
+                {
+                    var path = LutsPath + monitor.Position.Replace(',', '_') + "_hdr.cube";
+                    File.Copy(monitor.HdrLutPath, path);
+                    ClearPermissions(path);
+                }
             }
 
             var failed = false;
@@ -93,9 +102,9 @@ namespace DwmLutGUI
             var dwmInstances = Process.GetProcessesByName("dwm");
             foreach (var dwm in dwmInstances)
             {
-                var address = VirtualAllocEx(dwm.Handle, IntPtr.Zero, (UIntPtr) bytes.Length,
+                var address = VirtualAllocEx(dwm.Handle, IntPtr.Zero, (UIntPtr)bytes.Length,
                     AllocationType.Reserve | AllocationType.Commit, MemoryProtection.ReadWrite);
-                WriteProcessMemory(dwm.Handle, address, bytes, (UIntPtr) bytes.Length, out _);
+                WriteProcessMemory(dwm.Handle, address, bytes, (UIntPtr)bytes.Length, out _);
                 var thread = CreateRemoteThread(dwm.Handle, IntPtr.Zero, 0, LoadlibraryA, address, 0, out _);
                 WaitForSingleObject(thread, uint.MaxValue);
 

@@ -13,7 +13,7 @@ namespace DwmLutGUI
         public MainWindow()
         {
             InitializeComponent();
-            _viewModel = (MainViewModel) DataContext;
+            _viewModel = (MainViewModel)DataContext;
             _applyOnCooldown = false;
         }
 
@@ -34,18 +34,32 @@ namespace DwmLutGUI
             _viewModel.UpdateMonitors();
         }
 
-        private void LutBrowse_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void SdrLutBrowse_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             var lutPath = BrowseLuts();
             if (!string.IsNullOrEmpty(lutPath))
             {
-                _viewModel.LutPath = lutPath;
+                _viewModel.SdrLutPath = lutPath;
             }
         }
 
-        private void LutClear_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void SdrLutClear_Click(object sender, System.Windows.RoutedEventArgs e)
         {
-            _viewModel.LutPath = null;
+            _viewModel.SdrLutPath = null;
+        }
+
+        private void HdrLutBrowse_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            var lutPath = BrowseLuts();
+            if (!string.IsNullOrEmpty(lutPath))
+            {
+                _viewModel.HdrLutPath = lutPath;
+            }
+        }
+
+        private void HdrLutClear_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            _viewModel.HdrLutPath = null;
         }
 
         private void Disable_Click(object sender, System.Windows.RoutedEventArgs e)

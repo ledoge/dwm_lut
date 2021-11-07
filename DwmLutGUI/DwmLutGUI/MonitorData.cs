@@ -7,10 +7,11 @@ namespace DwmLutGUI
     {
         public event PropertyChangedEventHandler PropertyChanged;
 
-        private string _lutPath;
+        private string _sdrLutPath;
+        private string _hdrLutPath;
 
         public MonitorData(uint deviceId, uint sourceId, string name, string resolution, string refreshRate,
-            string connector, string position, string lutPath)
+            string connector, string position, string sdrLutPath, string hdrLutPath)
         {
             DeviceId = deviceId;
             SourceId = sourceId;
@@ -19,7 +20,8 @@ namespace DwmLutGUI
             RefreshRate = refreshRate;
             Connector = connector;
             Position = position;
-            LutPath = lutPath;
+            SdrLutPath = sdrLutPath;
+            HdrLutPath = hdrLutPath;
         }
 
         public uint DeviceId { get; }
@@ -30,17 +32,30 @@ namespace DwmLutGUI
         public string Connector { get; }
         public string Position { get; }
 
-        public string LutPath
+        public string SdrLutPath
         {
             set
             {
-                if (value == _lutPath) return;
-                _lutPath = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LutFilename)));
+                if (value == _sdrLutPath) return;
+                _sdrLutPath = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SdrLutFilename)));
             }
-            get => _lutPath;
+            get => _sdrLutPath;
         }
 
-        public string LutFilename => Path.GetFileName(LutPath) ?? "None";
+        public string HdrLutPath
+        {
+            set
+            {
+                if (value == _hdrLutPath) return;
+                _hdrLutPath = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HdrLutFilename)));
+            }
+            get => _hdrLutPath;
+        }
+
+        public string SdrLutFilename => Path.GetFileName(SdrLutPath) ?? "None";
+
+        public string HdrLutFilename => Path.GetFileName(HdrLutPath) ?? "None";
     }
 }
