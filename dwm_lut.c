@@ -51,6 +51,11 @@ char shaders[] = STRINGIFY((
         Texture3D lutTex : register(t1);
         SamplerState smp : register(s0);
 
+        Texture2D bayerTex : register(t2);
+        SamplerState bayerSmp : register(s1);
+
+        bool hdr : register(b0);
+
         static float3x3 bt709_to_bt2020 = {
         17634161964.L / 28106554770.L, 9255011753.L / 28106554770.L,  1217381053.L / 28106554770.L,
           459093558.L /  6644161620.L, 6109575001.L /  6644161620.L,    75493061.L /  6644161620.L,
@@ -111,6 +116,20 @@ char shaders[] = STRINGIFY((
             return pow((c1 + c2 * pow(y, m1)) / (1 + c3 * pow(y, m1)), m2);
         }
 
+        float3 OrderedDither(float3 rgb, float2 pos) {
+            float3 low = floor(rgb * 255) / 255;
+            float3 high = low + 1.0 / 255;
+
+            float3 rgb_linear = pow(rgb, DITHER_GAMMA);
+            float3 low_linear = pow(low, DITHER_GAMMA);
+            float3 high_linear = pow(high, DITHER_GAMMA);
+
+            float noise = bayerTex.Sample(bayerSmp, pos / BAYER_SIZE).x;
+            float3 threshold = lerp(low_linear, high_linear, noise);
+
+            return lerp(low, high, rgb_linear > threshold);
+       }
+
         VS_OUTPUT VS(VS_INPUT input) {
             VS_OUTPUT output;
             output.pos = float4(input.pos, 0, 1);
@@ -119,15 +138,24 @@ char shaders[] = STRINGIFY((
         }
 
         float4 PS(VS_OUTPUT input) : SV_TARGET {
-            float3 scrgb_sample = backBufferTex.Sample(smp, input.tex).rgb;
+            float3 sample = backBufferTex.Sample(smp, input.tex).rgb;
 
-            float3 hdr10_sample = pq_inv_eotf(max(mul(bt709_to_bt2020, scrgb_sample * 80 / 10000), 0));
-            
-            float3 hdr10_res = LutTransformTetrahedral(hdr10_sample);
+            if (hdr) {
+                float3 hdr10_sample = pq_inv_eotf(max(mul(bt709_to_bt2020, sample * 80 / 10000), 0));
 
-            float3 scrgb_res = mul(bt2020_to_bt709, pq_eotf(hdr10_res)) * 10000 / 80;
+                float3 hdr10_res = LutTransformTetrahedral(hdr10_sample);
 
-            return float4(scrgb_res, 1);
+                float3 scrgb_res = mul(bt2020_to_bt709, pq_eotf(hdr10_res)) * 10000 / 80;
+
+                return float4(scrgb_res, 1);
+            }
+            else {
+                float3 res = LutTransformTetrahedral(sample);
+
+                res = OrderedDither(res, input.pos.xy);
+
+                return float4(res, 1);
+            }
         }
 ));
 #pragma pop_macro("bool")
@@ -144,23 +172,26 @@ UINT stride;
 UINT offset;
 
 D3D11_TEXTURE2D_DESC backBufferDesc;
-D3D11_TEXTURE2D_DESC textureDesc;
+D3D11_TEXTURE2D_DESC textureDesc[2];
 
 ID3D11SamplerState *samplerState;
-ID3D11Texture2D *texture;
-ID3D11ShaderResourceView *textureView;
+ID3D11Texture2D *texture[2];
+ID3D11ShaderResourceView *textureView[2];
 
 ID3D11SamplerState *bayerSamplerState;
 ID3D11ShaderResourceView *bayerTextureView;
 
+ID3D11Buffer *constantBuffer;
+
 typedef struct lutData {
     int left;
     int top;
+    bool isHdr;
     ID3D11ShaderResourceView *textureView;
     float (*rawLut)[LUT_SIZE][LUT_SIZE][4];
 } lutData;
 
-void DrawRectangle(struct tagRECT *rect) {
+void DrawRectangle(struct tagRECT *rect, int index) {
     float width = backBufferDesc.Width;
     float height = backBufferDesc.Height;
 
@@ -174,8 +205,8 @@ void DrawRectangle(struct tagRECT *rect) {
     float right = screenRight * 2 - 1;
     float bottom = screenBottom * -2 + 1;
 
-    width = textureDesc.Width;
-    height = textureDesc.Height;
+    width = textureDesc[index].Width;
+    height = textureDesc[index].Height;
     float texLeft = rect->left / width;
     float texTop = rect->top / height;
     float texRight = rect->right / width;
@@ -256,11 +287,14 @@ void AddLUTs(char *folder) {
     do {
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char filePath[MAX_PATH];
+            char *fileName = findData.cFileName;
+
             strcpy(filePath, folder);
             strcat(filePath, "\\");
-            strcat(filePath, findData.cFileName);
+            strcat(filePath, fileName);
 
             if (sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top) == 2) {
+                luts[numLuts].isHdr = strstr(fileName, "hdr") != NULL;
                 AddLUT(filePath);
             }
         }
@@ -298,7 +332,7 @@ void RemoveLUTActiveTarget(void *address) {
     }
 }
 
-lutData *GetLUTDataFromCOverlayContext(void *context) {
+lutData *GetLUTDataFromCOverlayContext(void *context, bool hdr) {
     int left, top;
     if (isWindows11) {
         float *rect = (float *) ((unsigned char *) context + COverlayContext_DeviceClipBox_offset_w11);
@@ -311,7 +345,7 @@ lutData *GetLUTDataFromCOverlayContext(void *context) {
     }
 
     for (int i = 0; i < numLuts; i++) {
-        if (luts[i].left == left && luts[i].top == top) {
+        if (luts[i].left == left && luts[i].top == top && luts[i].isHdr == hdr) {
             return &luts[i];
         }
     }
@@ -433,6 +467,13 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &bayerTextureView);
         tex->lpVtbl->Release(tex);
     }
+    {
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.ByteWidth = 16;
+
+        device->lpVtbl->CreateBuffer(device, &constantBufferDesc, NULL, &constantBuffer);
+    }
 }
 
 void UninitializeStuff() {
@@ -443,16 +484,19 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(inputLayout)
     RELEASE_IF_NOT_NULL(vertexBuffer)
     RELEASE_IF_NOT_NULL(samplerState)
-    RELEASE_IF_NOT_NULL(texture)
-    RELEASE_IF_NOT_NULL(textureView)
+    for (int i = 0; i < 2; i++) {
+        RELEASE_IF_NOT_NULL(texture[i])
+        RELEASE_IF_NOT_NULL(textureView[i])
+    }
     RELEASE_IF_NOT_NULL(bayerSamplerState)
     RELEASE_IF_NOT_NULL(bayerTextureView)
+    RELEASE_IF_NOT_NULL(constantBuffer)
     for (int i = 0; i < numLuts; i++) {
         RELEASE_IF_NOT_NULL(luts[i].textureView)
     }
 }
 
-bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
+bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
     if (!device) {
         InitializeStuff(swapChain);
     }
@@ -462,38 +506,49 @@ bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
 
     swapChain->lpVtbl->GetBuffer(swapChain, 0, &IID_ID3D11Texture2D, (void **) &backBuffer);
 
-    {
-        D3D11_TEXTURE2D_DESC newBackBufferDesc;
-        backBuffer->lpVtbl->GetDesc(backBuffer, &newBackBufferDesc);
+    D3D11_TEXTURE2D_DESC newBackBufferDesc;
+    backBuffer->lpVtbl->GetDesc(backBuffer, &newBackBufferDesc);
 
-        if (newBackBufferDesc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
-            backBuffer->lpVtbl->Release(backBuffer);
-            return false;
-        }
-
-        if (newBackBufferDesc.Width > textureDesc.Width || newBackBufferDesc.Height > textureDesc.Height) {
-            if (texture != NULL) {
-                texture->lpVtbl->Release(texture);
-                textureView->lpVtbl->Release(textureView);
-            }
-
-            UINT newWidth = max(newBackBufferDesc.Width, textureDesc.Width);
-            UINT newHeight = max(newBackBufferDesc.Height, textureDesc.Height);
-
-            textureDesc = newBackBufferDesc;
-            textureDesc.Width = newWidth;
-            textureDesc.Height = newHeight;
-            textureDesc.Usage = D3D11_USAGE_DEFAULT;
-            textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-            textureDesc.CPUAccessFlags = 0;
-            textureDesc.MiscFlags = 0;
-
-            device->lpVtbl->CreateTexture2D(device, &textureDesc, NULL, &texture);
-            device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) texture, NULL, &textureView);
-        }
-
-        backBufferDesc = newBackBufferDesc;
+    int index = -1;
+    if (newBackBufferDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM) {
+        index = 0;
+    } else if (newBackBufferDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+        index = 1;
     }
+
+    lutData *lut;
+    if (index == -1 || !(lut = GetLUTDataFromCOverlayContext(cOverlayContext, index == 1))) {
+        backBuffer->lpVtbl->Release(backBuffer);
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC oldTextureDesc = textureDesc[index];
+    if (newBackBufferDesc.Width > oldTextureDesc.Width || newBackBufferDesc.Height > oldTextureDesc.Height) {
+        if (texture[index] != NULL) {
+            texture[index]->lpVtbl->Release(texture[index]);
+            textureView[index]->lpVtbl->Release(textureView[index]);
+        }
+
+        UINT newWidth = max(newBackBufferDesc.Width, oldTextureDesc.Width);
+        UINT newHeight = max(newBackBufferDesc.Height, oldTextureDesc.Height);
+
+        D3D11_TEXTURE2D_DESC newTextureDesc;
+
+        newTextureDesc = newBackBufferDesc;
+        newTextureDesc.Width = newWidth;
+        newTextureDesc.Height = newHeight;
+        newTextureDesc.Usage = D3D11_USAGE_DEFAULT;
+        newTextureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        newTextureDesc.CPUAccessFlags = 0;
+        newTextureDesc.MiscFlags = 0;
+
+        textureDesc[index] = newTextureDesc;
+
+        device->lpVtbl->CreateTexture2D(device, &textureDesc[index], NULL, &texture[index]);
+        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) texture[index], NULL, &textureView[index]);
+    }
+
+    backBufferDesc = newBackBufferDesc;
 
     device->lpVtbl->CreateRenderTargetView(device, (ID3D11Resource *) backBuffer, NULL, &renderTargetView);
 
@@ -508,12 +563,17 @@ bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
     deviceContext->lpVtbl->VSSetShader(deviceContext, vertexShader, NULL, 0);
     deviceContext->lpVtbl->PSSetShader(deviceContext, pixelShader, NULL, 0);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 0, 1, &textureView[index]);
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut->textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &bayerSamplerState);
+
+    deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
+
+    int constants[4] = { index == 1 };
+    deviceContext->lpVtbl->UpdateSubresource(deviceContext, (ID3D11Resource *) constantBuffer, 0, NULL, constants, 0, 0);
 
     for (int i = 0; i < numRects; i++) {
         D3D11_BOX sourceRegion;
@@ -524,8 +584,8 @@ bool ApplyLUT(lutData *lut, IDXGISwapChain *swapChain, struct tagRECT *rects, un
         sourceRegion.front = 0;
         sourceRegion.back = 1;
 
-        deviceContext->lpVtbl->CopySubresourceRegion(deviceContext, (ID3D11Resource *) texture, 0, rects[i].left, rects[i].top, 0, (ID3D11Resource *) backBuffer, 0, &sourceRegion);
-        DrawRectangle(&rects[i]);
+        deviceContext->lpVtbl->CopySubresourceRegion(deviceContext, (ID3D11Resource *) texture[index], 0, rects[i].left, rects[i].top, 0, (ID3D11Resource *) backBuffer, 0, &sourceRegion);
+        DrawRectangle(&rects[i], index);
     }
 
     backBuffer->lpVtbl->Release(backBuffer);
@@ -552,8 +612,7 @@ long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned i
             swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
         }
 
-        lutData *lut = GetLUTDataFromCOverlayContext(this);
-        if (lut != NULL && ApplyLUT(lut, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
+        if (ApplyLUT(this, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
             AddLUTActiveTarget(this);
         } else {
             RemoveLUTActiveTarget(this);
