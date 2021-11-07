@@ -449,7 +449,7 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         }
         for (unsigned y = 0; y < dim; ++y) {
             for (unsigned x = 0; x < dim; ++x) {
-                unsigned v = 0, mask = M - 1, xc = x ^y, yc = y;
+                unsigned v = 0, mask = M - 1, xc = x ^ y, yc = y;
                 for (unsigned bit = 0; bit < 2 * M; --mask) {
                     v |= ((yc >> mask) & 1) << bit++;
                     v |= ((xc >> mask) & 1) << bit++;
@@ -572,7 +572,7 @@ bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *
 
     deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
 
-    int constants[4] = { index == 1 };
+    int constants[4] = {index == 1};
     deviceContext->lpVtbl->UpdateSubresource(deviceContext, (ID3D11Resource *) constantBuffer, 0, NULL, constants, 0, 0);
 
     for (int i = 0; i < numRects; i++) {
