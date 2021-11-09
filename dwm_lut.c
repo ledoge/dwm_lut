@@ -9,7 +9,6 @@
 #define BAYER_SIZE 32
 #define DITHER_GAMMA 2.2
 #define LUT_FOLDER "%SYSTEMROOT%\\Temp\\luts"
-#define LUT_SIZE 65
 #define MAX_LUTS 32
 
 #define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
@@ -54,6 +53,7 @@ char shaders[] = STRINGIFY((
         Texture2D bayerTex : register(t2);
         SamplerState bayerSmp : register(s1);
 
+        int lutSize : register(b0);
         bool hdr : register(b0);
 
         static float3x3 bt709_to_bt2020 = {
@@ -75,7 +75,7 @@ char shaders[] = STRINGIFY((
         static float c3 = 2392 /  128.;
 
         float3 SampleLut(float3 index) {
-            float3 tex = index / LUT_SIZE + 0.5 / LUT_SIZE;
+            float3 tex = index / lutSize + 0.5 / lutSize;
             return lutTex.Sample(smp, tex).rgb;
         }
 
@@ -97,7 +97,7 @@ char shaders[] = STRINGIFY((
         }
 
         float3 LutTransformTetrahedral(float3 rgb) {
-            float3 lutIndex = rgb * (LUT_SIZE - 1);
+            float3 lutIndex = rgb * (lutSize - 1);
             float4 bary; int3 vert2; int3 vert3;
             barycentricWeight(frac(lutIndex), bary, vert2, vert3);
 
@@ -186,9 +186,10 @@ ID3D11Buffer *constantBuffer;
 typedef struct lutData {
     int left;
     int top;
+    int size;
     bool isHdr;
     ID3D11ShaderResourceView *textureView;
-    float (*rawLut)[LUT_SIZE][LUT_SIZE][4];
+    float *rawLut;
 } lutData;
 
 void DrawRectangle(struct tagRECT *rect, int index) {
@@ -237,15 +238,25 @@ bool AddLUT(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) return false;
 
-    float (*rawLut)[LUT_SIZE][LUT_SIZE][4] = malloc(LUT_SIZE * sizeof(*luts[0].rawLut));
+    char line[256];
+    int lutSize;
 
-    for (int b = 0; b < LUT_SIZE; b++) {
-        for (int g = 0; g < LUT_SIZE; g++) {
-            for (int r = 0; r < LUT_SIZE; r++) {
-                char line[256];
-                bool gotLine = false;
+    while (1) {
+        if (!fgets(line, sizeof(line), file)) {
+            fclose(file);
+            return false;
+        }
+        if (sscanf(line, "LUT_3D_SIZE%d", &lutSize) == 1) {
+            break;
+        };
+    }
 
-                while (!gotLine) {
+    float (*rawLut)[lutSize][lutSize][4] = malloc(lutSize * lutSize * lutSize * 4 * sizeof(float));
+
+    for (int b = 0; b < lutSize; b++) {
+        for (int g = 0; g < lutSize; g++) {
+            for (int r = 0; r < lutSize; r++) {
+                while (1) {
                     if (!fgets(line, sizeof(line), file)) {
                         fclose(file);
                         free(rawLut);
@@ -265,14 +276,15 @@ bool AddLUT(char *filename) {
                         rawLut[b][g][r][2] = blue;
                         rawLut[b][g][r][3] = 1;
 
-                        gotLine = true;
+                        break;
                     }
                 }
             }
         }
     }
     fclose(file);
-    luts[numLuts++].rawLut = rawLut;
+    luts[numLuts].size = lutSize;
+    luts[numLuts++].rawLut = (float *) rawLut;
     return true;
 }
 
@@ -395,29 +407,29 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
 
         device->lpVtbl->CreateSamplerState(device, &samplerDesc, &samplerState);
     }
-    {
+    for (int i = 0; i < numLuts; i++) {
+        lutData *lut = &luts[i];
+
         D3D11_TEXTURE3D_DESC desc = {};
-        desc.Width = LUT_SIZE;
-        desc.Height = LUT_SIZE;
-        desc.Depth = LUT_SIZE;
+        desc.Width = lut->size;
+        desc.Height = lut->size;
+        desc.Depth = lut->size;
         desc.MipLevels = 1;
         desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
         desc.Usage = D3D11_USAGE_IMMUTABLE;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-        for (int i = 0; i < numLuts; i++) {
-            D3D11_SUBRESOURCE_DATA initData;
-            initData.pSysMem = luts[i].rawLut;
-            initData.SysMemPitch = sizeof(luts[i].rawLut[0][0]);
-            initData.SysMemSlicePitch = sizeof(luts[i].rawLut[0]);
+        D3D11_SUBRESOURCE_DATA initData;
+        initData.pSysMem = lut->rawLut;
+        initData.SysMemPitch = lut->size * 4 * sizeof(float);
+        initData.SysMemSlicePitch = lut->size * lut->size * 4 * sizeof(float);
 
-            ID3D11Texture3D *tex;
-            device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
-            device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &luts[i].textureView);
-            tex->lpVtbl->Release(tex);
-            free(luts[i].rawLut);
-            luts[i].rawLut = NULL;
-        }
+        ID3D11Texture3D *tex;
+        device->lpVtbl->CreateTexture3D(device, &desc, &initData, &tex);
+        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &luts[i].textureView);
+        tex->lpVtbl->Release(tex);
+        free(lut->rawLut);
+        lut->rawLut = NULL;
     }
     {
         D3D11_SAMPLER_DESC samplerDesc = {};
@@ -471,6 +483,8 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         D3D11_BUFFER_DESC constantBufferDesc = {};
         constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         constantBufferDesc.ByteWidth = 16;
+        constantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+        constantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
         device->lpVtbl->CreateBuffer(device, &constantBufferDesc, NULL, &constantBuffer);
     }
@@ -570,10 +584,14 @@ bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &bayerSamplerState);
 
-    deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
+    int constantData[4] = {lut->size, index == 1};
 
-    int constants[4] = {index == 1};
-    deviceContext->lpVtbl->UpdateSubresource(deviceContext, (ID3D11Resource *) constantBuffer, 0, NULL, constants, 0, 0);
+    D3D11_MAPPED_SUBRESOURCE resource;
+    deviceContext->lpVtbl->Map(deviceContext, (ID3D11Resource *) constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+    memcpy(resource.pData, constantData, sizeof(constantData));
+    deviceContext->lpVtbl->Unmap(deviceContext, (ID3D11Resource *) constantBuffer, 0);
+
+    deviceContext->lpVtbl->PSSetConstantBuffers(deviceContext, 0, 1, &constantBuffer);
 
     for (int i = 0; i < numRects; i++) {
         D3D11_BOX sourceRegion;
