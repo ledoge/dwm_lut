@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -177,7 +178,8 @@ namespace DwmLutGUI
                 }
 
                 var resolution = path.Resolution.Width + "x" + path.Resolution.Height;
-                var refreshRate = (targetInfo.FrequencyInMillihertz / 1000.0).ToString("n3") + " Hz";
+                var refreshRate =
+                    (targetInfo.FrequencyInMillihertz / 1000.0).ToString("n3", CultureInfo.InvariantCulture) + " Hz";
                 var connector = targetInfo.OutputTechnology.ToString();
                 if (connector == "DisplayPortExternal")
                 {
