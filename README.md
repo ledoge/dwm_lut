@@ -1,10 +1,12 @@
 # About
-This tool applies 3D LUTs to the Windows desktop by hooking into DWM, utilizing tetrahedral interpolation and ordered dithering. Right now it should work on any 20H2 or 21H1 build of Windows 10, and also the current build of Windows 11, and I'll try to update it whenever a new version breaks it.
+This tool applies 3D LUTs to the Windows desktop by hooking into DWM. It works in both SDR and HDR modes, and uses tetrahedral interpolation. In SDR, ordered dithering is applied to the output to reduce banding.
+
+Right now it should work on any 20H2 or 21H1 build of Windows 10, and also the current build of Windows 11, and I'll try to update it whenever a new version breaks it.
 
 # Usage
-Use DisplayCAL or similar to generate the 65x65x65 .cube LUT files you want to apply, run `DwmLutGUI.exe`, assign them to monitors and then click Apply.
+Use DisplayCAL or similar to generate .cube LUT files of any size, run `DwmLutGUI.exe`, assign them to monitors and then click Apply.
 
-LUTs cannot be applied in HDR mode.
+HDR LUTs must use BT.2020 + SMPTE 2084 values as input and output.
 
 Note: DirectFlip and MPO get force disabled on monitors with an active LUT. These features are designed to improve performance for some windowed applications by allowing them to bypass DWM (and therefore also the LUT). This ensures that LUTs gets applied to all applications (except exclusive fullscreen ones).
 
