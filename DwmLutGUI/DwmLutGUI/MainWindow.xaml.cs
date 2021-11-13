@@ -94,7 +94,7 @@ namespace DwmLutGUI
 
             var result = dlg.ShowDialog();
 
-            return (result == true) ? dlg.FileName : null;
+            return result == true ? dlg.FileName : null;
         }
 
         private void MonitorRefreshButton_Click(object sender, System.Windows.RoutedEventArgs e)
