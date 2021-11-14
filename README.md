@@ -6,7 +6,7 @@ Right now it should work on any 20H2 or 21H1 build of Windows 10, and also the c
 # Usage
 Use DisplayCAL or similar to generate .cube LUT files of any size, run `DwmLutGUI.exe`, assign them to monitors and then click Apply. Note that LUTs cannot be applied to monitors that are in "Duplicate" mode.
 
-HDR LUTs must use BT.2020 + SMPTE 2084 values as input and output.
+HDR LUTs must use BT.2020 + SMPTE ST 2084 values as input and output.
 
 Note: DirectFlip and MPO get force disabled on monitors with an active LUT. These features are designed to improve performance for some windowed applications by allowing them to bypass DWM (and therefore also the LUT). This ensures that LUTs gets applied to all applications (except exclusive fullscreen ones).
 
