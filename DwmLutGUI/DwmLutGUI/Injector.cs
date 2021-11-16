@@ -35,7 +35,9 @@ namespace DwmLutGUI
             }
             catch (Exception)
             {
+#if RELEASE
                 MessageBox.Show("Failed to enter debug mode – will not be able to apply LUTs.");
+#endif
                 NoDebug = true;
             }
         }
