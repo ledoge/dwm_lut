@@ -224,6 +224,7 @@ namespace DwmLutGUI
             };
 
             overlay.Show();
+            Thread.Sleep(50);
             overlay.Close();
         }
     }
