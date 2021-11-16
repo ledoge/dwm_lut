@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Forms;
+using MessageBox = System.Windows.Forms.MessageBox;
 
 namespace DwmLutGUI
 {
@@ -13,10 +16,10 @@ namespace DwmLutGUI
         private readonly MainViewModel _viewModel;
         private bool _applyOnCooldown;
 
-        private MenuItem _statusItem;
-        private MenuItem _applyItem;
-        private MenuItem _disableItem;
-        private MenuItem _disableAndExitItem;
+        private readonly MenuItem _statusItem;
+        private readonly MenuItem _applyItem;
+        private readonly MenuItem _disableItem;
+        private readonly MenuItem _disableAndExitItem;
 
         public MainWindow()
         {
@@ -45,7 +48,7 @@ namespace DwmLutGUI
 
             if (args.Contains("-minimize"))
             {
-                WindowState = System.Windows.WindowState.Minimized;
+                WindowState = WindowState.Minimized;
                 Hide();
             }
             else if (args.Contains("-exit"))
@@ -62,7 +65,7 @@ namespace DwmLutGUI
                 delegate
                 {
                     Show();
-                    WindowState = System.Windows.WindowState.Normal;
+                    WindowState = WindowState.Normal;
                 };
 
             var contextMenu = new ContextMenu();
@@ -72,7 +75,7 @@ namespace DwmLutGUI
             _statusItem.Enabled = false;
 
             contextMenu.MenuItems.Add("-");
-            
+
             _applyItem = new MenuItem();
             contextMenu.MenuItems.Add(_applyItem);
             _applyItem.Text = "Apply";
@@ -93,7 +96,7 @@ namespace DwmLutGUI
                 Disable_Click(null, null);
                 Close();
             };
-            
+
             var exitItem = new MenuItem();
             contextMenu.MenuItems.Add(exitItem);
             exitItem.Text = "Exit";
@@ -110,7 +113,7 @@ namespace DwmLutGUI
 
         protected override void OnStateChanged(EventArgs e)
         {
-            if (WindowState == System.Windows.WindowState.Minimized)
+            if (WindowState == WindowState.Minimized)
             {
                 Hide();
             }
@@ -123,7 +126,7 @@ namespace DwmLutGUI
             _statusItem.Text = "Status: " + _viewModel.ActiveText;
 
             var canDisable = _viewModel.IsActive && !Injector.NoDebug;
-            
+
             _applyItem.Enabled = _viewModel.CanApply;
             _disableItem.Enabled = canDisable;
             _disableAndExitItem.Enabled = canDisable;
@@ -141,12 +144,12 @@ namespace DwmLutGUI
             return result == true ? dlg.FileName : null;
         }
 
-        private void MonitorRefreshButton_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void MonitorRefreshButton_Click(object sender, RoutedEventArgs e)
         {
             _viewModel.UpdateMonitors();
         }
 
-        private void SdrLutBrowse_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void SdrLutBrowse_Click(object sender, RoutedEventArgs e)
         {
             var lutPath = BrowseLuts();
             if (!string.IsNullOrEmpty(lutPath))
@@ -155,12 +158,12 @@ namespace DwmLutGUI
             }
         }
 
-        private void SdrLutClear_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void SdrLutClear_Click(object sender, RoutedEventArgs e)
         {
             _viewModel.SdrLutPath = null;
         }
 
-        private void HdrLutBrowse_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void HdrLutBrowse_Click(object sender, RoutedEventArgs e)
         {
             var lutPath = BrowseLuts();
             if (!string.IsNullOrEmpty(lutPath))
@@ -169,16 +172,17 @@ namespace DwmLutGUI
             }
         }
 
-        private void HdrLutClear_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void HdrLutClear_Click(object sender, RoutedEventArgs e)
         {
             _viewModel.HdrLutPath = null;
         }
 
-        private void Disable_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void Disable_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 _viewModel.Uninject();
+                RedrawScreens();
             }
             catch (Exception x)
             {
@@ -186,7 +190,7 @@ namespace DwmLutGUI
             }
         }
 
-        private void Apply_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void Apply_Click(object sender, RoutedEventArgs e)
         {
             if (_applyOnCooldown) return;
             _applyOnCooldown = true;
@@ -194,6 +198,7 @@ namespace DwmLutGUI
             try
             {
                 _viewModel.ReInject();
+                RedrawScreens();
             }
             catch (Exception x)
             {
@@ -205,6 +210,21 @@ namespace DwmLutGUI
                 Thread.Sleep(100);
                 _applyOnCooldown = false;
             });
+        }
+
+        private static void RedrawScreens()
+        {
+            var rect = Screen.AllScreens.Select(x => x.Bounds).Aggregate(Rectangle.Union);
+            var overlay = new OverlayWindow
+            {
+                Left = rect.Left,
+                Top = rect.Top,
+                Height = rect.Height,
+                Width = rect.Width,
+            };
+
+            overlay.Show();
+            overlay.Close();
         }
     }
 }

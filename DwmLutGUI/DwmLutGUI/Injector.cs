@@ -197,8 +197,7 @@ namespace DwmLutGUI
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr CloseHandle(IntPtr hObject);
-
-
+        
         [DllImport("kernel32.dll")]
         private static extern IntPtr CreateFile(string lpFileName, DesiredAccess dwDesiredAccess, uint dwShareMode,
             IntPtr lpSecurityAttributes, CreationDisposition dwCreationDisposition,
