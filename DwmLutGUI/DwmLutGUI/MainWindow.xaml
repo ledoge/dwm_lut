@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DwmLutGUI"
         mc:Ignorable="d"
-        Title="DwmLutGUI" Height="400" Width="600" MinHeight="200" MinWidth="300">
+        Title="DwmLutGUI" Height="365" Width="600" MinHeight="200" MinWidth="300">
     <Window.DataContext>
         <local:MainViewModel />
     </Window.DataContext>
@@ -57,7 +57,8 @@
                 </WrapPanel>
             </Grid>
             <DataGrid SelectedItem="{Binding SelectedMonitor}" ItemsSource="{Binding Monitors}" RowHeaderWidth="0"
-                      IsReadOnly="True" AutoGenerateColumns="False" DockPanel.Dock="Bottom" Margin="0,0,0,6">
+                      IsReadOnly="True" AutoGenerateColumns="False" DockPanel.Dock="Bottom" Margin="0,0,0,6"
+                      CanUserAddRows="False">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="#" Binding="{Binding SourceId}" />
                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" />
