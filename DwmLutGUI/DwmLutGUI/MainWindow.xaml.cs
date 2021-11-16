@@ -13,6 +13,11 @@ namespace DwmLutGUI
         private readonly MainViewModel _viewModel;
         private bool _applyOnCooldown;
 
+        private MenuItem _statusItem;
+        private MenuItem _applyItem;
+        private MenuItem _disableItem;
+        private MenuItem _disableAndExitItem;
+
         public MainWindow()
         {
             if (Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName).Length > 1)
@@ -61,12 +66,40 @@ namespace DwmLutGUI
                 };
 
             var contextMenu = new ContextMenu();
-            var menuItem = new MenuItem();
-            contextMenu.MenuItems.Add(menuItem);
 
-            menuItem.Index = 0;
-            menuItem.Text = "Exit";
-            menuItem.Click += delegate { Close(); };
+            _statusItem = new MenuItem();
+            contextMenu.MenuItems.Add(_statusItem);
+            _statusItem.Enabled = false;
+
+            contextMenu.MenuItems.Add("-");
+            
+            _applyItem = new MenuItem();
+            contextMenu.MenuItems.Add(_applyItem);
+            _applyItem.Text = "Apply";
+            _applyItem.Click += delegate { Apply_Click(null, null); };
+
+            _disableItem = new MenuItem();
+            contextMenu.MenuItems.Add(_disableItem);
+            _disableItem.Text = "Disable";
+            _disableItem.Click += delegate { Disable_Click(null, null); };
+
+            contextMenu.MenuItems.Add("-");
+
+            _disableAndExitItem = new MenuItem();
+            contextMenu.MenuItems.Add(_disableAndExitItem);
+            _disableAndExitItem.Text = "Disable and exit";
+            _disableAndExitItem.Click += delegate
+            {
+                Disable_Click(null, null);
+                Close();
+            };
+            
+            var exitItem = new MenuItem();
+            contextMenu.MenuItems.Add(exitItem);
+            exitItem.Text = "Exit";
+            exitItem.Click += delegate { Close(); };
+
+            contextMenu.Popup += delegate { UpdateContextMenu(); };
 
             notifyIcon.ContextMenu = contextMenu;
 
@@ -83,6 +116,17 @@ namespace DwmLutGUI
             }
 
             base.OnStateChanged(e);
+        }
+
+        private void UpdateContextMenu()
+        {
+            _statusItem.Text = "Status: " + _viewModel.ActiveText;
+
+            var canDisable = _viewModel.IsActive && !Injector.NoDebug;
+            
+            _applyItem.Enabled = _viewModel.CanApply;
+            _disableItem.Enabled = canDisable;
+            _disableAndExitItem.Enabled = canDisable;
         }
 
         private static string BrowseLuts()
