@@ -230,7 +230,7 @@ void DrawRectangle(struct tagRECT *rect, int index) {
     deviceContext->lpVtbl->Draw(deviceContext, numVerts, 0);
 }
 
-size_t numLuts;
+int numLuts;
 
 lutData luts[MAX_LUTS];
 
@@ -314,8 +314,8 @@ void AddLUTs(char *folder) {
     FindClose(hFind);
 }
 
-size_t lutActiveTargetIndex;
-size_t trackedLutActiveTargets;
+int lutActiveTargetIndex;
+int trackedLutActiveTargets;
 void *lutActiveTargets[MAX_LUTS];
 
 bool IsLUTActiveTarget(void *address) {
@@ -510,7 +510,7 @@ void UninitializeStuff() {
     }
 }
 
-bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *rects, unsigned int numRects) {
+bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *rects, int numRects) {
     if (!device) {
         InitializeStuff(swapChain);
     }
@@ -673,7 +673,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             isWindows11 = NtBuildNumber >= 22000;
 
             if (isWindows11) {
-                for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes_w11); i++) {
+                for (size_t i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes_w11); i++) {
                     unsigned char *address = (unsigned char *) dwmcore + i;
                     if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes_w11, sizeof(COverlayContext_Present_bytes_w11))) {
                         COverlayContext_Present_orig = (COverlayContext_Present_t *) (address - 0xf);
@@ -692,7 +692,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                     }
                 }
             } else {
-                for (int i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
+                for (size_t i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
                     unsigned char *address = (unsigned char *) dwmcore + i;
                     if (!COverlayContext_Present_orig && !memcmp(address, COverlayContext_Present_bytes, sizeof(COverlayContext_Present_bytes))) {
                         COverlayContext_Present_orig = (COverlayContext_Present_t *) address;
