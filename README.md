@@ -6,6 +6,9 @@ Right now it should work on any 20H2 or 21H1 build of Windows 10, and also the c
 # Usage
 Use DisplayCAL or similar to generate .cube LUT files of any size, run `DwmLutGUI.exe`, assign them to monitors and then click Apply. Note that LUTs cannot be applied to monitors that are in "Duplicate" mode.
 
+
+For ColourSpace users with HT license level, 65^3 eeColor LUT .txt files are also supported.
+
 HDR LUTs must use BT.2020 + SMPTE ST 2084 values as input and output.
 
 Minimizing the GUI will make it disappear from the taskbar, and you can use the context menu of the tray icon to quickly apply or disable all LUTs. For automation, you can start the exe with any (sensible) combination of `-apply`,  `-disable`, `-minimize` and `-exit` as arguments.
