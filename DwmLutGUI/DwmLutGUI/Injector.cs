@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -68,6 +69,52 @@ namespace DwmLutGUI
             return result;
         }
 
+        private static void CopyOrConvertLut(string source, string dest)
+        {
+            var extension = source.Split('.').Last();
+            switch (extension)
+            {
+                case "cube":
+                    File.Copy(source, dest);
+                    ClearPermissions(dest);
+                    break;
+                case "txt":
+                {
+                    var lines = File.ReadAllLines(source);
+
+                    using (var file = new StreamWriter(dest))
+                    {
+                        file.WriteLine("LUT_3D_SIZE 65");
+
+                        for (var b = 0; b < 65; b++)
+                        {
+                            for (var g = 0; g < 65; g++)
+                            {
+                                for (var r = 0; r < 65; r++)
+                                {
+                                    var line = lines[g + 65 * (r + 65 * b)];
+                                    var start = 1;
+                                    var found = 0;
+
+                                    while (found != 3)
+                                    {
+                                        if (line[start++] == ' ') found++;
+                                    }
+                                    
+                                    file.WriteLine(line.Substring(start));
+                                }
+                            }
+                        }
+                    }
+
+                    ClearPermissions(dest);
+                    break;
+                }
+                default:
+                    throw new Exception("Unsupported LUT format: " + extension);
+            }
+        }
+
         public static void Inject(IEnumerable<MonitorData> monitors)
         {
             File.Copy(AppDomain.CurrentDomain.BaseDirectory + DllName, DllPath, true);
@@ -85,16 +132,14 @@ namespace DwmLutGUI
             {
                 if (!string.IsNullOrEmpty(monitor.SdrLutPath))
                 {
-                    var path = LutsPath + monitor.Position.Replace(',', '_') + ".cube";
-                    File.Copy(monitor.SdrLutPath, path);
-                    ClearPermissions(path);
+                    var dest = LutsPath + monitor.Position.Replace(',', '_') + ".cube";
+                    CopyOrConvertLut(monitor.SdrLutPath, dest);
                 }
 
                 if (string.IsNullOrEmpty(monitor.HdrLutPath)) continue;
                 {
-                    var path = LutsPath + monitor.Position.Replace(',', '_') + "_hdr.cube";
-                    File.Copy(monitor.HdrLutPath, path);
-                    ClearPermissions(path);
+                    var dest = LutsPath + monitor.Position.Replace(',', '_') + "_hdr.cube";
+                    CopyOrConvertLut(monitor.HdrLutPath, dest);
                 }
             }
 
@@ -196,7 +241,7 @@ namespace DwmLutGUI
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr CloseHandle(IntPtr hObject);
-        
+
         [DllImport("kernel32.dll")]
         private static extern IntPtr CreateFile(string lpFileName, DesiredAccess dwDesiredAccess, uint dwShareMode,
             IntPtr lpSecurityAttributes, CreationDisposition dwCreationDisposition,

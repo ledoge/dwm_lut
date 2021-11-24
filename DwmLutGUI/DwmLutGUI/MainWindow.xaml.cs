@@ -59,7 +59,7 @@ namespace DwmLutGUI
 
             var notifyIcon = new NotifyIcon();
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("DwmLutGUI.smile.ico");
-            notifyIcon.Icon = new System.Drawing.Icon(stream);
+            notifyIcon.Icon = new Icon(stream);
             notifyIcon.Visible = true;
             notifyIcon.DoubleClick +=
                 delegate
@@ -136,7 +136,7 @@ namespace DwmLutGUI
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Cube LUTs|*.cube"
+                Filter = "LUT files|*.cube;*.txt"
             };
 
             var result = dlg.ShowDialog();
