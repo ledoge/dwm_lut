@@ -23,6 +23,8 @@ const unsigned char COverlayContext_OverlaysEnabled_bytes[] = {0x75, 0x04, 0x32,
 
 const int COverlayContext_DeviceClipBox_offset = -0x120;
 
+const int IOverlaySwapChain_HardwareProtected_offset = -0xbc;
+
 const unsigned char COverlayContext_Present_bytes_w11[] = {0x48, 0x33, 0xc4, 0x48, 0x89, 0x44, 0x24, 0x50, 0x48, 0x8b, 0xb1, 0xa0, 0x2b, 0x00, 0x00, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6};
 const int IOverlaySwapChain_IDXGISwapChain_offset_w11 = -0x148;
 
@@ -30,6 +32,8 @@ const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes_w11[] 
 const unsigned char COverlayContext_OverlaysEnabled_bytes_w11[] = {0x74, 0x09, 0x83, 0x79, 0x2c, 0x01, 0x0f, 0x97, 0xc0, 0xc3, 0xcc, 0x32, 0xc0, 0xc3};
 
 const int COverlayContext_DeviceClipBox_offset_w11 = 0x462c;
+
+const int IOverlaySwapChain_HardwareProtected_offset_w11 = -0xec;
 
 bool isWindows11;
 
@@ -623,17 +627,22 @@ COverlayContext_Present_t *COverlayContext_Present_real_orig;
 
 long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned int a3, rectVec *rectVec, unsigned int a5, bool a6) {
     if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
-        IDXGISwapChain *swapChain;
-        if (isWindows11) {
-            swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset_w11);
-        } else {
-            swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
-        }
-
-        if (ApplyLUT(this, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
-            AddLUTActiveTarget(this);
-        } else {
+        if (isWindows11 && *((bool *) overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11) ||
+            !isWindows11 && *((bool *) overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset)) {
             RemoveLUTActiveTarget(this);
+        } else {
+            IDXGISwapChain *swapChain;
+            if (isWindows11) {
+                swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset_w11);
+            } else {
+                swapChain = *(IDXGISwapChain **) ((unsigned char *) overlaySwapChain + IOverlaySwapChain_IDXGISwapChain_offset);
+            }
+
+            if (ApplyLUT(this, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
+                AddLUTActiveTarget(this);
+            } else {
+                RemoveLUTActiveTarget(this);
+            }
         }
     }
     return COverlayContext_Present_orig(this, overlaySwapChain, a3, rectVec, a5, a6);
