@@ -136,7 +136,7 @@ namespace DwmLutGUI
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "LUT files|*.cube;*.txt"
+                Filter = "LUT Files|*.cube;*.txt"
             };
 
             var result = dlg.ShowDialog();
