@@ -19,7 +19,6 @@ namespace DwmLutGUI
         private bool _isActive;
 
         private readonly string _configPath;
-        private readonly Dictionary<uint, string[]> _config;
 
         public MainViewModel()
         {
@@ -30,17 +29,6 @@ namespace DwmLutGUI
             dispatcherTimer.Start();
 
             _configPath = AppDomain.CurrentDomain.BaseDirectory + "config.xml";
-            if (File.Exists(_configPath))
-            {
-                var xElem = XElement.Load(_configPath);
-                _config = xElem.Descendants("monitor")
-                    .ToDictionary(x => (uint)x.Attribute("id"),
-                        x => new[] { (string)x.Attribute("sdr_lut"), (string)x.Attribute("hdr_lut") });
-            }
-            else
-            {
-                _config = new Dictionary<uint, string[]>();
-            }
 
             Monitors = new ObservableCollection<MonitorData>();
             UpdateMonitors();
@@ -75,10 +63,10 @@ namespace DwmLutGUI
         private void SaveConfig()
         {
             var xElem = new XElement("monitors",
-                _config.Select(x =>
-                    new XElement("monitor", new XAttribute("id", x.Key),
-                        x.Value[0] != null ? new XAttribute("sdr_lut", x.Value[0]) : null,
-                        x.Value[1] != null ? new XAttribute("hdr_lut", x.Value[1]) : null)));
+                Monitors.Select(x =>
+                    new XElement("monitor", new XAttribute("id", x.DeviceId),
+                        x.SdrLutPath != null ? new XAttribute("sdr_lut", x.SdrLutPath) : null,
+                        x.HdrLutPath != null ? new XAttribute("hdr_lut", x.HdrLutPath) : null)));
             xElem.Save(_configPath);
         }
 
@@ -89,25 +77,6 @@ namespace DwmLutGUI
                 if (SelectedMonitor == null || SelectedMonitor.SdrLutPath == value) return;
                 SelectedMonitor.SdrLutPath = value;
                 OnPropertyChanged();
-
-                var key = SelectedMonitor.DeviceId;
-                if (!string.IsNullOrEmpty(value))
-                {
-                    if (!_config.ContainsKey(key))
-                    {
-                        _config[key] = new string[2];
-                    }
-
-                    _config[key][0] = value;
-                }
-                else
-                {
-                    _config[key][0] = null;
-                    if (_config[key][1] == null)
-                    {
-                        _config.Remove(key);
-                    }
-                }
 
                 SaveConfig();
             }
@@ -121,25 +90,6 @@ namespace DwmLutGUI
                 if (SelectedMonitor == null || SelectedMonitor.HdrLutPath == value) return;
                 SelectedMonitor.HdrLutPath = value;
                 OnPropertyChanged();
-
-                var key = SelectedMonitor.DeviceId;
-                if (!string.IsNullOrEmpty(value))
-                {
-                    if (!_config.ContainsKey(key))
-                    {
-                        _config[key] = new string[2];
-                    }
-
-                    _config[key][1] = value;
-                }
-                else
-                {
-                    _config[key][1] = null;
-                    if (_config[key][0] == null)
-                    {
-                        _config.Remove(key);
-                    }
-                }
 
                 SaveConfig();
             }
@@ -165,6 +115,12 @@ namespace DwmLutGUI
         {
             var selectedId = SelectedMonitor?.DeviceId;
             Monitors.Clear();
+            List<XElement> config = null;
+            if (File.Exists(_configPath))
+            {
+                config = XElement.Load(_configPath).Descendants("monitor").ToList();
+            }
+
             var paths = WindowsDisplayAPI.DisplayConfig.PathInfo.GetActivePaths();
             foreach (var path in paths)
             {
@@ -190,14 +146,11 @@ namespace DwmLutGUI
 
                 string sdrLutPath = null;
                 string hdrLutPath = null;
-                if (_config.ContainsKey(deviceId))
+                var settings = config?.FirstOrDefault(x => (uint)x.Attribute("id") == deviceId);
+                if (settings != null)
                 {
-                    sdrLutPath = _config[deviceId][0];
-                }
-
-                if (_config.ContainsKey(deviceId))
-                {
-                    hdrLutPath = _config[deviceId][1];
+                    sdrLutPath = (string)settings.Attribute("sdr_lut");
+                    hdrLutPath = (string)settings.Attribute("hdr_lut");
                 }
 
                 Monitors.Add(new MonitorData(deviceId, path.DisplaySource.SourceId + 1, name, resolution, refreshRate,
