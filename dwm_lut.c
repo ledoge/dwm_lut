@@ -79,7 +79,7 @@ char shaders[] = STRINGIFY((
         static float c3 = 2392 /  128.;
 
         float3 SampleLut(float3 index) {
-            float3 tex = index / lutSize + 0.5 / lutSize;
+            float3 tex = (index + 0.5) / lutSize;
             return lutTex.Sample(smp, tex).rgb;
         }
 
