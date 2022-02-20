@@ -1,3 +1,6 @@
+## [Download latest release](https://github.com/ledoge/dwm_lut/releases/latest/download/release.zip)
+
+
 # About
 This tool applies 3D LUTs to the Windows desktop by hooking into DWM. It works in both SDR and HDR modes, and uses tetrahedral interpolation on the LUT data. In SDR, ordered dithering is applied to the output to reduce banding.
 
