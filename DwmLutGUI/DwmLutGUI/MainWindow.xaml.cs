@@ -37,8 +37,16 @@ namespace DwmLutGUI
             var args = Environment.GetCommandLineArgs().ToList();
             args.RemoveAt(0);
 
+            var exitImmediately = args.Contains("-exit");
+
             if (args.Contains("-apply"))
             {
+                if (exitImmediately)
+                {
+                    ArgLutPath(args, "-sdr", (MonitorData m, string value) => m.SdrLutPath = value);
+                    ArgLutPath(args, "-hdr", (MonitorData m, string value) => m.HdrLutPath = value);
+                }
+
                 Apply_Click(null, null);
             }
             else if (args.Contains("-disable"))
@@ -51,7 +59,7 @@ namespace DwmLutGUI
                 WindowState = WindowState.Minimized;
                 Hide();
             }
-            else if (args.Contains("-exit"))
+            else if (exitImmediately)
             {
                 Close();
                 return;
@@ -210,6 +218,36 @@ namespace DwmLutGUI
                 Thread.Sleep(100);
                 _applyOnCooldown = false;
             });
+        }
+
+        private void ArgLutPath(System.Collections.Generic.IList<string> args, string argName, Action<MonitorData, string> callback)
+        {
+            var argIndex = args.IndexOf(argName);
+            if (argIndex == -1)
+            {
+                return;
+            }
+
+            char[] monitorValueSplitter = { ':' };
+            foreach (var monitorIndexToValue in args[argIndex + 1].Split(';'))
+            {
+                var splitted = monitorIndexToValue.Split(monitorValueSplitter, 2);
+                if (int.TryParse(splitted[0], out int monitorIndex))
+                {
+                    monitorIndex -= 1;
+                }
+                else
+                {
+                    continue;
+                }
+
+                var monitorObject = _viewModel.Monitors.ElementAtOrDefault(monitorIndex);
+                var trimmedValue = splitted[1].Trim();
+                if (monitorObject != null && trimmedValue != "")
+                {
+                    callback(monitorObject, trimmedValue);
+                }
+            }
         }
 
         private static void RedrawScreens()
