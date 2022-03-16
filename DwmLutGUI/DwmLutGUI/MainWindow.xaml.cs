@@ -37,7 +37,7 @@ namespace DwmLutGUI
             var args = Environment.GetCommandLineArgs().ToList();
             args.RemoveAt(0);
 
-            var exitImmediately = args.Contains("-exit");
+            bool exitImmediately = args.Contains("-exit");
 
             if (args.Contains("-apply"))
             {
@@ -222,22 +222,22 @@ namespace DwmLutGUI
 
         private void ArgLutPath(System.Collections.Generic.IList<string> args, string argName, Action<MonitorData, string> callback)
         {
-            var argIndex = args.IndexOf(argName);
+            int argIndex = args.IndexOf(argName);
             if (argIndex == -1)
             {
                 return;
             }
 
-            var argValue = args.ElementAtOrDefault(argIndex + 1);
+            string argValue = args.ElementAtOrDefault(argIndex + 1);
             if (argValue == null)
             {
                 return;
             }
 
             char[] monitorValueSplitter = { ':' };
-            foreach (var monitorIndexToValue in argValue.Split(';'))
+            foreach (string monitorIndexToValue in argValue.Split(';'))
             {
-                var splitted = monitorIndexToValue.Split(monitorValueSplitter, 2);
+                string[] splitted = monitorIndexToValue.Split(monitorValueSplitter, 2);
                 if (int.TryParse(splitted[0], out int monitorIndex))
                 {
                     monitorIndex -= 1;
@@ -247,19 +247,19 @@ namespace DwmLutGUI
                     continue;
                 }
 
-                var monitorObject = _viewModel.Monitors.ElementAtOrDefault(monitorIndex);
+                MonitorData monitorObject = _viewModel.Monitors.ElementAtOrDefault(monitorIndex);
                 if (monitorObject == null)
                 {
                     continue;
                 }
 
-                var pristineValue = splitted.ElementAtOrDefault(1);
+                string pristineValue = splitted.ElementAtOrDefault(1);
                 if (pristineValue == null)
                 {
                     continue;
                 }
 
-                var trimmedValue = pristineValue.Trim();
+                string trimmedValue = pristineValue.Trim();
                 if (trimmedValue != "")
                 {
                     callback(monitorObject, trimmedValue);
