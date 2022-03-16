@@ -228,8 +228,14 @@ namespace DwmLutGUI
                 return;
             }
 
+            var argValue = args.ElementAtOrDefault(argIndex + 1);
+            if (argValue == null)
+            {
+                return;
+            }
+
             char[] monitorValueSplitter = { ':' };
-            foreach (var monitorIndexToValue in args[argIndex + 1].Split(';'))
+            foreach (var monitorIndexToValue in argValue.Split(';'))
             {
                 var splitted = monitorIndexToValue.Split(monitorValueSplitter, 2);
                 if (int.TryParse(splitted[0], out int monitorIndex))
@@ -242,8 +248,19 @@ namespace DwmLutGUI
                 }
 
                 var monitorObject = _viewModel.Monitors.ElementAtOrDefault(monitorIndex);
-                var trimmedValue = splitted[1].Trim();
-                if (monitorObject != null && trimmedValue != "")
+                if (monitorObject == null)
+                {
+                    continue;
+                }
+
+                var pristineValue = splitted.ElementAtOrDefault(1);
+                if (pristineValue == null)
+                {
+                    continue;
+                }
+
+                var trimmedValue = pristineValue.Trim();
+                if (trimmedValue != "")
                 {
                     callback(monitorObject, trimmedValue);
                 }
