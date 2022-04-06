@@ -30,6 +30,7 @@ namespace DwmLutGUI
 
             _configPath = AppDomain.CurrentDomain.BaseDirectory + "config.xml";
 
+            _allMonitors = new List<MonitorData>();
             Monitors = new ObservableCollection<MonitorData>();
             UpdateMonitors();
 
@@ -63,8 +64,8 @@ namespace DwmLutGUI
         private void SaveConfig()
         {
             var xElem = new XElement("monitors",
-                Monitors.Select(x =>
-                    new XElement("monitor", new XAttribute("id", x.DeviceId),
+                _allMonitors.Select(x =>
+                    new XElement("monitor", new XAttribute("path", x.DevicePath),
                         x.SdrLutPath != null ? new XAttribute("sdr_lut", x.SdrLutPath) : null,
                         x.HdrLutPath != null ? new XAttribute("hdr_lut", x.HdrLutPath) : null)));
             xElem.Save(_configPath);
@@ -109,11 +110,12 @@ namespace DwmLutGUI
 
         public bool CanApply { get; }
 
+        private List<MonitorData> _allMonitors { get; }
         public ObservableCollection<MonitorData> Monitors { get; }
 
         public void UpdateMonitors()
         {
-            var selectedId = SelectedMonitor?.DeviceId;
+            var selectedPath = SelectedMonitor?.DevicePath;
             Monitors.Clear();
             List<XElement> config = null;
             if (File.Exists(_configPath))
@@ -127,6 +129,7 @@ namespace DwmLutGUI
                 if (path.IsCloneMember) continue;
                 var targetInfo = path.TargetsInfo[0];
                 var deviceId = targetInfo.DisplayTarget.TargetId;
+                var devicePath = targetInfo.DisplayTarget.DevicePath;
                 var name = targetInfo.DisplayTarget.FriendlyName;
                 if (string.IsNullOrEmpty(name))
                 {
@@ -146,20 +149,40 @@ namespace DwmLutGUI
 
                 string sdrLutPath = null;
                 string hdrLutPath = null;
-                var settings = config?.FirstOrDefault(x => (uint)x.Attribute("id") == deviceId);
+
+                var settings = config?.FirstOrDefault(x => (uint?)x.Attribute("id") == deviceId) ??
+                               config?.FirstOrDefault(x => (string)x.Attribute("path") == devicePath);
+
                 if (settings != null)
                 {
                     sdrLutPath = (string)settings.Attribute("sdr_lut");
                     hdrLutPath = (string)settings.Attribute("hdr_lut");
                 }
 
-                Monitors.Add(new MonitorData(deviceId, path.DisplaySource.SourceId + 1, name, resolution, refreshRate,
-                    connector, position, sdrLutPath, hdrLutPath));
+                var monitor = new MonitorData(devicePath, path.DisplaySource.SourceId + 1, name, resolution,
+                    refreshRate,
+                    connector, position, sdrLutPath, hdrLutPath);
+                _allMonitors.Add(monitor);
+                Monitors.Add(monitor);
             }
 
-            if (selectedId == null) return;
+            if (config != null)
+            {
+                foreach (var monitor in config)
+                {
+                    var path = (string)monitor.Attribute("path");
+                    if (Monitors.Any(x => x.DevicePath == path)) continue;
 
-            var previous = Monitors.FirstOrDefault(monitor => monitor.DeviceId == selectedId);
+                    var sdrLutPath = (string)monitor.Attribute("sdr_lut");
+                    var hdrLutPath = (string)monitor.Attribute("hdr_lut");
+
+                    _allMonitors.Add(new MonitorData(path, sdrLutPath, hdrLutPath));
+                }
+            }
+
+            if (selectedPath == null) return;
+
+            var previous = Monitors.FirstOrDefault(monitor => monitor.DevicePath == selectedPath);
             if (previous != null)
             {
                 SelectedMonitor = previous;
@@ -170,7 +193,7 @@ namespace DwmLutGUI
         {
             Injector.Uninject();
             if (!Monitors.All(monitor =>
-                string.IsNullOrEmpty(monitor.SdrLutPath) && string.IsNullOrEmpty(monitor.HdrLutPath)))
+                    string.IsNullOrEmpty(monitor.SdrLutPath) && string.IsNullOrEmpty(monitor.HdrLutPath)))
             {
                 Injector.Inject(Monitors);
             }
