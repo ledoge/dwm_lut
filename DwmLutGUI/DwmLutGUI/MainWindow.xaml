@@ -47,13 +47,14 @@
                         Width="75" Click="HdrLutClear_Click" />
             </Grid>
             <Grid DockPanel.Dock="Bottom">
-                <Button Content="Refresh" Width="75" HorizontalAlignment="Left"
-                        Click="MonitorRefreshButton_Click" />
+                <Button Content="About" Width="75" HorizontalAlignment="Left" Click="AboutButton_Click" />
                 <WrapPanel HorizontalAlignment="Right">
                     <Button IsEnabled="{Binding CanApply}" Content="Apply" Width="75" Margin="0,0,6,0"
                             Click="Apply_Click" />
-                    <Button Content="Disable" Width="75" IsEnabled="{Binding IsActive}"
+                    <Button Content="Disable" Width="75" IsEnabled="{Binding IsActive}" Margin="0,0,6,0"
                             Click="Disable_Click" />
+                    <Button Content="Refresh" Width="75" Click="MonitorRefreshButton_Click" />
+
                 </WrapPanel>
             </Grid>
             <DataGrid SelectedItem="{Binding SelectedMonitor}" ItemsSource="{Binding Monitors}" RowHeaderWidth="0"

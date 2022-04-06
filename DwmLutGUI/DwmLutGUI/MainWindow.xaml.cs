@@ -143,6 +143,15 @@ namespace DwmLutGUI
 
             return result == true ? dlg.FileName : null;
         }
+        
+        private void AboutButton_Click(object sender, RoutedEventArgs o)
+        {
+            var window = new AboutWindow
+            {
+                Owner = this
+            };
+            window.ShowDialog();
+        }
 
         private void MonitorRefreshButton_Click(object sender, RoutedEventArgs e)
         {
