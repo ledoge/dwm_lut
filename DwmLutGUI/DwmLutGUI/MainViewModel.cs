@@ -116,6 +116,7 @@ namespace DwmLutGUI
         public void UpdateMonitors()
         {
             var selectedPath = SelectedMonitor?.DevicePath;
+            _allMonitors.Clear();
             Monitors.Clear();
             List<XElement> config = null;
             if (File.Exists(_configPath))
