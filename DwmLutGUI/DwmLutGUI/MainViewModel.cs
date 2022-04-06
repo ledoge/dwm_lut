@@ -171,7 +171,7 @@ namespace DwmLutGUI
                 foreach (var monitor in config)
                 {
                     var path = (string)monitor.Attribute("path");
-                    if (Monitors.Any(x => x.DevicePath == path)) continue;
+                    if (path == null || Monitors.Any(x => x.DevicePath == path)) continue;
 
                     var sdrLutPath = (string)monitor.Attribute("sdr_lut");
                     var hdrLutPath = (string)monitor.Attribute("hdr_lut");
