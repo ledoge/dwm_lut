@@ -60,16 +60,16 @@ char shaders[] = STRINGIFY((
         int lutSize : register(b0);
         bool hdr : register(b0);
 
-        static float3x3 bt709_to_bt2020 = {
-        2939026994.L / 4684425795.L, 9255011753.L / 28106554770.L,   173911579.L /  4015222110.L,
-          76515593.L / 1107360270.L, 6109575001.L /  6644161620.L,    75493061.L /  6644161620.L,
-          12225392.L /  745840075.L, 1772384008.L / 20137682025.L, 18035212433.L / 20137682025.L,
+        static float3x3 scrgb_to_bt2100 = {
+        2939026994.L / 585553224375.L, 9255011753.L / 3513319346250.L,   173911579.L /  501902763750.L,
+          76515593.L / 138420033750.L, 6109575001.L /  830520202500.L,    75493061.L /  830520202500.L,
+          12225392.L /  93230009375.L, 1772384008.L / 2517210253125.L, 18035212433.L / 2517210253125.L,
         };
 
-        static float3x3 bt2020_to_bt709 = {
-         2785571537.L /  1677558947.L,  -985802650.L /  1677558947.L,  -122209940.L /  1677558947.L,
-        -4638020506.L / 37238079773.L, 42187016744.L / 37238079773.L,  -310916465.L / 37238079773.L,
-          -97469024.L /  5369968309.L, -3780738464.L / 37589778163.L, 42052799795.L / 37589778163.L,
+        static float3x3 bt2100_to_scrgb = {
+         348196442125.L /  1677558947.L, -123225331250.L /  1677558947.L,  -15276242500.L /  1677558947.L,
+        -579752563250.L / 37238079773.L, 5273377093000.L / 37238079773.L,  -38864558125.L / 37238079773.L,
+         -12183628000.L /  5369968309.L, -472592308000.L / 37589778163.L, 5256599974375.L / 37589778163.L,
         };
 
         static float m1 = 1305 / 8192.;
@@ -145,11 +145,11 @@ char shaders[] = STRINGIFY((
             float3 sample = backBufferTex.Sample(smp, input.tex).rgb;
 
             if (hdr) {
-                float3 hdr10_sample = pq_inv_eotf(max(mul(bt709_to_bt2020, sample * 80 / 10000), 0));
+                float3 hdr10_sample = pq_inv_eotf(saturate(mul(scrgb_to_bt2100, sample)));
 
                 float3 hdr10_res = LutTransformTetrahedral(hdr10_sample);
 
-                float3 scrgb_res = mul(bt2020_to_bt709, pq_eotf(hdr10_res)) * 10000 / 80;
+                float3 scrgb_res = mul(bt2100_to_scrgb, pq_eotf(hdr10_res));
 
                 return float4(scrgb_res, 1);
             }
