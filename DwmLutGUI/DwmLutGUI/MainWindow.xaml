@@ -51,10 +51,8 @@
                 <WrapPanel HorizontalAlignment="Right">
                     <Button IsEnabled="{Binding CanApply}" Content="Apply" Width="75" Margin="0,0,6,0"
                             Click="Apply_Click" />
-                    <Button Content="Disable" Width="75" IsEnabled="{Binding IsActive}" Margin="0,0,6,0"
+                    <Button Content="Disable" Width="75" IsEnabled="{Binding IsActive}"
                             Click="Disable_Click" />
-                    <Button Content="Refresh" Width="75" Click="MonitorRefreshButton_Click" />
-
                 </WrapPanel>
             </Grid>
             <DataGrid SelectedItem="{Binding SelectedMonitor}" ItemsSource="{Binding Monitors}" RowHeaderWidth="0"

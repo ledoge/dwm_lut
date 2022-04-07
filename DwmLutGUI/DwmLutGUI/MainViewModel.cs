@@ -20,6 +20,10 @@ namespace DwmLutGUI
 
         private readonly string _configPath;
 
+        private bool _configChanged;
+        private XElement _lastConfig;
+        private XElement _activeConfig;
+
         public MainViewModel()
         {
             UpdateActiveStatus();
@@ -61,6 +65,11 @@ namespace DwmLutGUI
             get => _selectedMonitor;
         }
 
+        private void UpdateConfigChanged()
+        {
+            _configChanged = _lastConfig != _activeConfig && !XNode.DeepEquals(_lastConfig, _activeConfig);
+        }
+
         private void SaveConfig()
         {
             var xElem = new XElement("monitors",
@@ -68,7 +77,12 @@ namespace DwmLutGUI
                     new XElement("monitor", new XAttribute("path", x.DevicePath),
                         x.SdrLutPath != null ? new XAttribute("sdr_lut", x.SdrLutPath) : null,
                         x.HdrLutPath != null ? new XAttribute("hdr_lut", x.HdrLutPath) : null)));
+
             xElem.Save(_configPath);
+
+            _lastConfig = xElem;
+            UpdateConfigChanged();
+            UpdateActiveStatus();
         }
 
         public string SdrLutPath
@@ -199,6 +213,9 @@ namespace DwmLutGUI
                 Injector.Inject(Monitors);
             }
 
+            _activeConfig = _lastConfig;
+            UpdateConfigChanged();
+
             UpdateActiveStatus();
         }
 
@@ -214,7 +231,14 @@ namespace DwmLutGUI
             if (status != null)
             {
                 IsActive = (bool)status;
-                ActiveText = (bool)status ? "Active" : "Inactive";
+                if (status == true)
+                {
+                    ActiveText = "Active" + (_configChanged ? " (changed)" : "");
+                }
+                else
+                {
+                    ActiveText = "Inactive";
+                }
             }
             else
             {
@@ -223,14 +247,23 @@ namespace DwmLutGUI
             }
         }
 
-        private void OnPropertyChanged([CallerMemberName] string name = null)
+        public void OnDisplaySettingsChanged(object sender, EventArgs e)
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            UpdateMonitors();
+            if (!_configChanged)
+            {
+                ReInject();
+            }
         }
 
         private void DispatcherTimer_Tick(object sender, EventArgs e)
         {
             UpdateActiveStatus();
+        }
+
+        private void OnPropertyChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using MessageBox = System.Windows.Forms.MessageBox;
 
 namespace DwmLutGUI
@@ -109,6 +110,8 @@ namespace DwmLutGUI
             notifyIcon.Text = Assembly.GetEntryAssembly().GetName().Name;
 
             Closed += delegate { notifyIcon.Dispose(); };
+
+            SystemEvents.DisplaySettingsChanged += _viewModel.OnDisplaySettingsChanged;
         }
 
         protected override void OnStateChanged(EventArgs e)
@@ -151,11 +154,6 @@ namespace DwmLutGUI
                 Owner = this
             };
             window.ShowDialog();
-        }
-
-        private void MonitorRefreshButton_Click(object sender, RoutedEventArgs e)
-        {
-            _viewModel.UpdateMonitors();
         }
 
         private void SdrLutBrowse_Click(object sender, RoutedEventArgs e)
