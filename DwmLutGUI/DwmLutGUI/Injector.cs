@@ -168,11 +168,11 @@ namespace DwmLutGUI
 
             Directory.Delete(LutsPath, true);
 
-            if (failed)
-            {
-                throw new Exception(
-                    "Failed to load or initialize DLL. This probably means that a LUT file is malformed or that DWM got updated.");
-            }
+            if (!failed) return;
+
+            File.Delete(DllPath);
+            throw new Exception(
+                "Failed to load or initialize DLL. This probably means that a LUT file is malformed or that DWM got updated.");
         }
 
         public static void Uninject()
