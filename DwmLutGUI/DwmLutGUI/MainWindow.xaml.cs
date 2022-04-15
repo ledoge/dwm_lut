@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -135,18 +136,19 @@ namespace DwmLutGUI
             _disableAndExitItem.Enabled = canDisable;
         }
 
-        private static string BrowseLuts()
+        private static string BrowseLuts(string folder)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "LUT Files|*.cube;*.txt"
+                Filter = "LUT Files|*.cube;*.txt",
+                InitialDirectory = folder
             };
 
             var result = dlg.ShowDialog();
 
             return result == true ? dlg.FileName : null;
         }
-        
+
         private void AboutButton_Click(object sender, RoutedEventArgs o)
         {
             var window = new AboutWindow
@@ -158,7 +160,8 @@ namespace DwmLutGUI
 
         private void SdrLutBrowse_Click(object sender, RoutedEventArgs e)
         {
-            var lutPath = BrowseLuts();
+            var folder = Path.GetDirectoryName(_viewModel.SdrLutPath);
+            var lutPath = BrowseLuts(folder);
             if (!string.IsNullOrEmpty(lutPath))
             {
                 _viewModel.SdrLutPath = lutPath;
@@ -172,7 +175,8 @@ namespace DwmLutGUI
 
         private void HdrLutBrowse_Click(object sender, RoutedEventArgs e)
         {
-            var lutPath = BrowseLuts();
+            var folder = Path.GetDirectoryName(_viewModel.HdrLutPath);
+            var lutPath = BrowseLuts(folder);
             if (!string.IsNullOrEmpty(lutPath))
             {
                 _viewModel.HdrLutPath = lutPath;
