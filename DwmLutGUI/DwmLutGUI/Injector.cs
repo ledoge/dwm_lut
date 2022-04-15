@@ -100,7 +100,7 @@ namespace DwmLutGUI
                                     {
                                         if (line[start++] == ' ') found++;
                                     }
-                                    
+
                                     file.WriteLine(line.Substring(start));
                                 }
                             }
@@ -154,7 +154,7 @@ namespace DwmLutGUI
                 var thread = CreateRemoteThread(dwm.Handle, IntPtr.Zero, 0, LoadlibraryA, address, 0, out _);
                 WaitForSingleObject(thread, uint.MaxValue);
 
-                GetExitCodeThread(thread, out uint exitCode);
+                GetExitCodeThread(thread, out var exitCode);
                 if (exitCode == 0)
                 {
                     failed = true;
