@@ -61,8 +61,6 @@
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="#" Binding="{Binding SourceId}" />
                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" />
-                    <DataGridTextColumn Header="Resolution" Binding="{Binding Resolution}" />
-                    <DataGridTextColumn Header="Refresh rate" Binding="{Binding RefreshRate}" />
                     <DataGridTextColumn Header="Connector" Binding="{Binding Connector}" />
                     <DataGridTextColumn Header="Position" Binding="{Binding Position}" />
                     <DataGridTextColumn Header="SDR LUT" Width="*" Binding="{Binding SdrLutFilename}" />

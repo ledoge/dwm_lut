@@ -151,9 +151,6 @@ namespace DwmLutGUI
                     name = "???";
                 }
 
-                var resolution = path.Resolution.Width + "x" + path.Resolution.Height;
-                var refreshRate =
-                    (targetInfo.FrequencyInMillihertz / 1000.0).ToString("n3", CultureInfo.InvariantCulture) + " Hz";
                 var connector = targetInfo.OutputTechnology.ToString();
                 if (connector == "DisplayPortExternal")
                 {
@@ -174,9 +171,8 @@ namespace DwmLutGUI
                     hdrLutPath = (string)settings.Attribute("hdr_lut");
                 }
 
-                var monitor = new MonitorData(devicePath, path.DisplaySource.SourceId + 1, name, resolution,
-                    refreshRate,
-                    connector, position, sdrLutPath, hdrLutPath);
+                var monitor = new MonitorData(devicePath, path.DisplaySource.SourceId + 1, name, connector, position,
+                    sdrLutPath, hdrLutPath);
                 _allMonitors.Add(monitor);
                 Monitors.Add(monitor);
             }

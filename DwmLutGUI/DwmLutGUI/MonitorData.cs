@@ -10,14 +10,12 @@ namespace DwmLutGUI
         private string _sdrLutPath;
         private string _hdrLutPath;
 
-        public MonitorData(string devicePath, uint sourceId, string name, string resolution, string refreshRate,
-            string connector, string position, string sdrLutPath, string hdrLutPath)
+        public MonitorData(string devicePath, uint sourceId, string name, string connector, string position,
+            string sdrLutPath, string hdrLutPath)
         {
             DevicePath = devicePath;
             SourceId = sourceId;
             Name = name;
-            Resolution = resolution;
-            RefreshRate = refreshRate;
             Connector = connector;
             Position = position;
             SdrLutPath = sdrLutPath;
@@ -34,8 +32,6 @@ namespace DwmLutGUI
         public string DevicePath { get; }
         public uint SourceId { get; }
         public string Name { get; }
-        public string Resolution { get; }
-        public string RefreshRate { get; }
         public string Connector { get; }
         public string Position { get; }
 
