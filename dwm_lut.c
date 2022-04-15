@@ -9,11 +9,11 @@
 #define BAYER_SIZE 32
 #define DITHER_GAMMA 2.2
 #define LUT_FOLDER "%SYSTEMROOT%\\Temp\\luts"
-#define MAX_LUTS 32
 
 #define RELEASE_IF_NOT_NULL(x) { if (x != NULL) { x->lpVtbl->Release(x); } }
 #define _STRINGIFY(x) #x
 #define STRINGIFY(x) _STRINGIFY(x)
+#define RESIZE(x, y) { x = realloc(x, (y) * sizeof(*x)); }
 
 const unsigned char COverlayContext_Present_bytes[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20, 0x2c, 0x00, 0x00, 0x45, 0x8b, 0xd0, 0x48, 0x8b, 0xfa, 0x48, 0x8b, 0xd9, 0x48, 0x85, 0xf6, 0x0f, 0x85};
 const int IOverlaySwapChain_IDXGISwapChain_offset = -0x118;
@@ -236,9 +236,9 @@ void DrawRectangle(struct tagRECT *rect, int index) {
 
 int numLuts;
 
-lutData luts[MAX_LUTS];
+lutData *luts;
 
-bool AddLUT(char *filename) {
+bool ParseLUT(lutData *lut, char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) return false;
 
@@ -266,7 +266,7 @@ bool AddLUT(char *filename) {
                         free(rawLut);
                         return false;
                     }
-                    if (line[0] >= ',' && line[0] <= '9') {
+                    if (line[0] != '#' && line[0] != '\n') {
                         float red, green, blue;
 
                         if (sscanf(line, "%f%f%f", &red, &green, &blue) != 3) {
@@ -287,19 +287,19 @@ bool AddLUT(char *filename) {
         }
     }
     fclose(file);
-    luts[numLuts].size = lutSize;
-    luts[numLuts++].rawLut = (float *) rawLut;
+    lut->size = lutSize;
+    lut->rawLut = (float *) rawLut;
     return true;
 }
 
-void AddLUTs(char *folder) {
+bool AddLUTs(char *folder) {
     WIN32_FIND_DATAA findData;
 
     char path[MAX_PATH];
     strcpy(path, folder);
     strcat(path, "\\*");
     HANDLE hFind = FindFirstFileA(path, &findData);
-    if (hFind == INVALID_HANDLE_VALUE) return;
+    if (hFind == INVALID_HANDLE_VALUE) return false;
     do {
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char filePath[MAX_PATH];
@@ -309,40 +309,47 @@ void AddLUTs(char *folder) {
             strcat(filePath, "\\");
             strcat(filePath, fileName);
 
-            if (sscanf(findData.cFileName, "%d_%d", &luts[numLuts].left, &luts[numLuts].top) == 2) {
-                luts[numLuts].isHdr = strstr(fileName, "hdr") != NULL;
-                AddLUT(filePath);
+            RESIZE(luts, numLuts + 1)
+            lutData *lut = &luts[numLuts];
+            if (sscanf(findData.cFileName, "%d_%d", &lut->left, &lut->top) == 2) {
+                lut->isHdr = strstr(fileName, "hdr") != NULL;
+                lut->textureView = NULL;
+                if (!ParseLUT(lut, filePath)) {
+                    FindClose(hFind);
+                    return false;
+                }
+                numLuts++;
             }
         }
-    } while (FindNextFile(hFind, &findData) != 0 && numLuts < MAX_LUTS);
+    } while (FindNextFile(hFind, &findData) != 0);
     FindClose(hFind);
+    return true;
 }
 
-int lutActiveTargetIndex;
-int trackedLutActiveTargets;
-void *lutActiveTargets[MAX_LUTS];
+int numLutTargets;
+void **lutTargets;
 
-bool IsLUTActiveTarget(void *address) {
-    for (int i = 0; i < trackedLutActiveTargets; i++) {
-        if (lutActiveTargets[i] == address) {
+bool IsLUTActive(void *target) {
+    for (int i = 0; i < numLutTargets; i++) {
+        if (lutTargets[i] == target) {
             return true;
         }
     }
     return false;
 }
 
-void AddLUTActiveTarget(void *address) {
-    if (!IsLUTActiveTarget(address)) {
-        lutActiveTargets[lutActiveTargetIndex++] = address;
-        trackedLutActiveTargets = max(trackedLutActiveTargets, lutActiveTargetIndex);
-        lutActiveTargetIndex %= MAX_LUTS;
+void SetLUTActive(void *target) {
+    if (!IsLUTActive(target)) {
+        RESIZE(lutTargets, numLutTargets + 1)
+        lutTargets[numLutTargets++] = target;
     }
 }
 
-void RemoveLUTActiveTarget(void *address) {
-    for (int i = 0; i < trackedLutActiveTargets; i++) {
-        if (lutActiveTargets[i] == address) {
-            lutActiveTargets[i] = NULL;
+void UnsetLUTActive(void *target) {
+    for (int i = 0; i < numLutTargets; i++) {
+        if (lutTargets[i] == target) {
+            lutTargets[i] = lutTargets[--numLutTargets];
+            RESIZE(lutTargets, numLutTargets)
             return;
         }
     }
@@ -510,8 +517,11 @@ void UninitializeStuff() {
     RELEASE_IF_NOT_NULL(bayerTextureView)
     RELEASE_IF_NOT_NULL(constantBuffer)
     for (int i = 0; i < numLuts; i++) {
+        free(luts[i].rawLut);
         RELEASE_IF_NOT_NULL(luts[i].textureView)
     }
+    free(luts);
+    free(lutTargets);
 }
 
 bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *rects, int numRects) {
@@ -629,7 +639,7 @@ long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned i
     if (__builtin_return_address(0) < (void *) COverlayContext_Present_real_orig) {
         if (isWindows11 && *((bool *) overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11) ||
             !isWindows11 && *((bool *) overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset)) {
-            RemoveLUTActiveTarget(this);
+            UnsetLUTActive(this);
         } else {
             IDXGISwapChain *swapChain;
             if (isWindows11) {
@@ -639,9 +649,9 @@ long COverlayContext_Present_hook(void *this, void *overlaySwapChain, unsigned i
             }
 
             if (ApplyLUT(this, swapChain, rectVec->start, rectVec->end - rectVec->start)) {
-                AddLUTActiveTarget(this);
+                SetLUTActive(this);
             } else {
-                RemoveLUTActiveTarget(this);
+                UnsetLUTActive(this);
             }
         }
     }
@@ -653,7 +663,7 @@ typedef bool(COverlayContext_IsCandidateDirectFlipCompatbile_t)(void *, void *, 
 COverlayContext_IsCandidateDirectFlipCompatbile_t *COverlayContext_IsCandidateDirectFlipCompatbile_orig;
 
 bool COverlayContext_IsCandidateDirectFlipCompatbile_hook(void *this, void *a2, void *a3, void *a4, int a5, unsigned int a6, bool a7, bool a8) {
-    if (IsLUTActiveTarget(this)) {
+    if (IsLUTActive(this)) {
         return false;
     }
     return COverlayContext_IsCandidateDirectFlipCompatbile_orig(this, a2, a3, a4, a5, a6, a7, a8);
@@ -664,7 +674,7 @@ typedef bool(COverlayContext_OverlaysEnabled_t)(void *);
 COverlayContext_OverlaysEnabled_t *COverlayContext_OverlaysEnabled_orig;
 
 bool COverlayContext_OverlaysEnabled_hook(void *this) {
-    if (IsLUTActiveTarget(this)) {
+    if (IsLUTActive(this)) {
         return false;
     }
     return COverlayContext_OverlaysEnabled_orig(this);
@@ -723,7 +733,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
 
             char lutFolderPath[MAX_PATH];
             ExpandEnvironmentStringsA(LUT_FOLDER, lutFolderPath, sizeof(lutFolderPath));
-            AddLUTs(lutFolderPath);
+            if (!AddLUTs(lutFolderPath)) {
+                return FALSE;
+            }
 
             if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig && COverlayContext_OverlaysEnabled_orig && numLuts != 0) {
                 MH_Initialize();
