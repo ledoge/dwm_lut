@@ -266,7 +266,7 @@ bool ParseLUT(lutData *lut, char *filename) {
                         free(rawLut);
                         return false;
                     }
-                    if (line[0] != '#' && line[0] != '\n') {
+                    if (line[0] <= '9' && line[0] != '#' && line[0] != '\n') {
                         float red, green, blue;
 
                         if (sscanf(line, "%f%f%f", &red, &green, &blue) != 3) {
