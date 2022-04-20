@@ -252,7 +252,7 @@ bool ParseLUT(lutData *lut, char *filename) {
         }
         if (sscanf(line, "LUT_3D_SIZE%d", &lutSize) == 1) {
             break;
-        };
+        }
     }
 
     float (*rawLut)[lutSize][lutSize][4] = malloc(lutSize * lutSize * lutSize * 4 * sizeof(float));
