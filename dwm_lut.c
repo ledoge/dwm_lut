@@ -5,8 +5,8 @@
 #include <psapi.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include "noise.h"
 
-#define BAYER_SIZE 32
 #define DITHER_GAMMA 2.2
 #define LUT_FOLDER "%SYSTEMROOT%\\Temp\\luts"
 
@@ -54,8 +54,8 @@ char shaders[] = STRINGIFY((
         Texture3D lutTex : register(t1);
         SamplerState smp : register(s0);
 
-        Texture2D bayerTex : register(t2);
-        SamplerState bayerSmp : register(s1);
+        Texture2D noiseTex : register(t2);
+        SamplerState noiseSmp : register(s1);
 
         int lutSize : register(b0);
         bool hdr : register(b0);
@@ -128,7 +128,7 @@ char shaders[] = STRINGIFY((
             float3 low_linear = pow(low, DITHER_GAMMA);
             float3 high_linear = pow(high, DITHER_GAMMA);
 
-            float noise = bayerTex.Sample(bayerSmp, pos / BAYER_SIZE).x;
+            float noise = noiseTex.Sample(noiseSmp, pos / NOISE_SIZE).x;
             float3 threshold = lerp(low_linear, high_linear, noise);
 
             return lerp(low, high, rgb_linear > threshold);
@@ -182,8 +182,8 @@ ID3D11SamplerState *samplerState;
 ID3D11Texture2D *texture[2];
 ID3D11ShaderResourceView *textureView[2];
 
-ID3D11SamplerState *bayerSamplerState;
-ID3D11ShaderResourceView *bayerTextureView;
+ID3D11SamplerState *noiseSamplerState;
+ID3D11ShaderResourceView *noiseTextureView;
 
 ID3D11Buffer *constantBuffer;
 
@@ -448,12 +448,12 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         samplerDesc.AddressU = samplerDesc.AddressV = samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
         samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 
-        device->lpVtbl->CreateSamplerState(device, &samplerDesc, &bayerSamplerState);
+        device->lpVtbl->CreateSamplerState(device, &samplerDesc, &noiseSamplerState);
     }
     {
         D3D11_TEXTURE2D_DESC desc = {};
-        desc.Width = BAYER_SIZE;
-        desc.Height = BAYER_SIZE;
+        desc.Width = NOISE_SIZE;
+        desc.Height = NOISE_SIZE;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -462,32 +462,21 @@ void InitializeStuff(IDXGISwapChain *swapChain) {
         desc.Usage = D3D11_USAGE_IMMUTABLE;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-        float preCalculatedBayer[BAYER_SIZE][BAYER_SIZE];
+        float noise[NOISE_SIZE][NOISE_SIZE];
 
-        // adapted from https://bisqwit.iki.fi/story/howto/dither/jy/
-        const unsigned dim = BAYER_SIZE;
-        unsigned M = 0;
-        for (unsigned i = dim; i >>= 1;) {
-            M++;
-        }
-        for (unsigned y = 0; y < dim; ++y) {
-            for (unsigned x = 0; x < dim; ++x) {
-                unsigned v = 0, mask = M - 1, xc = x ^ y, yc = y;
-                for (unsigned bit = 0; bit < 2 * M; --mask) {
-                    v |= ((yc >> mask) & 1) << bit++;
-                    v |= ((xc >> mask) & 1) << bit++;
-                }
-                preCalculatedBayer[x][y] = (v + 0.5f) / (dim * dim);
+        for (int i = 0; i < NOISE_SIZE; i++) {
+            for (int j = 0; j < NOISE_SIZE; j++) {
+                noise[i][j] = (noiseBytes[i][j] + 0.5) / 256;
             }
         }
 
         D3D11_SUBRESOURCE_DATA initData;
-        initData.pSysMem = preCalculatedBayer;
-        initData.SysMemPitch = sizeof(preCalculatedBayer[0]);
+        initData.pSysMem = noise;
+        initData.SysMemPitch = sizeof(noise[0]);
 
         ID3D11Texture2D *tex;
         device->lpVtbl->CreateTexture2D(device, &desc, &initData, &tex);
-        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &bayerTextureView);
+        device->lpVtbl->CreateShaderResourceView(device, (ID3D11Resource *) tex, NULL, &noiseTextureView);
         tex->lpVtbl->Release(tex);
     }
     {
@@ -513,8 +502,8 @@ void UninitializeStuff() {
         RELEASE_IF_NOT_NULL(texture[i])
         RELEASE_IF_NOT_NULL(textureView[i])
     }
-    RELEASE_IF_NOT_NULL(bayerSamplerState)
-    RELEASE_IF_NOT_NULL(bayerTextureView)
+    RELEASE_IF_NOT_NULL(noiseSamplerState)
+    RELEASE_IF_NOT_NULL(noiseTextureView)
     RELEASE_IF_NOT_NULL(constantBuffer)
     for (int i = 0; i < numLuts; i++) {
         free(luts[i].rawLut);
@@ -595,8 +584,8 @@ bool ApplyLUT(void *cOverlayContext, IDXGISwapChain *swapChain, struct tagRECT *
     deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 1, 1, &lut->textureView);
     deviceContext->lpVtbl->PSSetSamplers(deviceContext, 0, 1, &samplerState);
 
-    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &bayerTextureView);
-    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &bayerSamplerState);
+    deviceContext->lpVtbl->PSSetShaderResources(deviceContext, 2, 1, &noiseTextureView);
+    deviceContext->lpVtbl->PSSetSamplers(deviceContext, 1, 1, &noiseSamplerState);
 
     int constantData[4] = {lut->size, index == 1};
 
