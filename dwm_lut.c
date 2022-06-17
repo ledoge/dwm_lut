@@ -31,7 +31,7 @@ const int IOverlaySwapChain_IDXGISwapChain_offset_w11 = -0x148;
 const unsigned char COverlayContext_IsCandidateDirectFlipCompatbile_bytes_w11[] = {0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8b, 0xec, 0x48, 0x83, 0xec, 0x68};
 const unsigned char COverlayContext_OverlaysEnabled_bytes_w11[] = {0x74, 0x09, 0x83, 0x79, 0x2c, 0x01, 0x0f, 0x97, 0xc0, 0xc3, 0xcc, 0x32, 0xc0, 0xc3};
 
-const int COverlayContext_DeviceClipBox_offset_w11 = 0x462c;
+int COverlayContext_DeviceClipBox_offset_w11 = 0x462c;
 
 const int IOverlaySwapChain_HardwareProtected_offset_w11 = -0xec;
 
@@ -699,6 +699,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                         break;
                     }
                 }
+
+                DWORD rev;
+                DWORD revSize = sizeof(rev);
+                RegGetValueA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "UBR", RRF_RT_DWORD, NULL, &rev, &revSize);
+
+                if (rev >= 706) {
+                    COverlayContext_DeviceClipBox_offset_w11 += 8;
+                }
+
             } else {
                 for (size_t i = 0; i <= moduleInfo.SizeOfImage - sizeof(COverlayContext_Present_bytes); i++) {
                     unsigned char *address = (unsigned char *) dwmcore + i;
