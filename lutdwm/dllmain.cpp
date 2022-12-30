@@ -2,11 +2,17 @@
 #include "pch.h"
 
 #include <fstream>
+#include <io.h>
+#include <string>
+#include <sstream>
 #pragma comment (lib, "d3d11.lib") // Maybe un-useful
 #pragma comment (lib, "d3dcompiler.lib")
 #pragma comment (lib, "dxgi.lib") // Maybe un-useful
 #pragma comment (lib, "uuid.lib") // Maybe un-useful
 #pragma comment (lib, "dxguid.lib")
+
+
+#pragma intrinsic(_ReturnAddress)
 
 #define DITHER_GAMMA 2.2
 #define LUT_FOLDER "%SYSTEMROOT%\\Temp\\luts"
@@ -15,8 +21,59 @@
 #define _STRINGIFY(x) #x
 #define STRINGIFY(x) _STRINGIFY(x)
 #define RESIZE(x, y) realloc(x, (y) * sizeof(*x));
-#define LOG_FILE_PATH R"(C:\Users\Authority\source\repos\lutdwm\x64\Debug\dwm.log)"
-#define MAX_LOG_FILE_SIZE 20000000
+#define LOG_FILE_PATH R"(C:\DWMLOG\dwm.log)"
+#define MAX_LOG_FILE_SIZE 20 * 1024 * 1024
+#define DEBUG_MODE true
+
+#if DEBUG_MODE == true
+#define LOG_ONLY_ONCE(x) if (static bool first_log = true) {log_to_file(x); first_log = false; }
+#define LOG_ONLY_ONCE_EX(x, y) if (static bool first_log_##y = true) { log_to_file(x); first_log_##y = false; }
+#define MESSAGE_BOX_DBG(x, y) MessageBoxA(NULL, x, "DEBUG HOOK DWM", y);
+#else
+#define LOG_ONLY_ONCE(x) // NOP, not in debug mode
+#define LOG_ONLY_ONCE_EX(x, y) // NOP, not in debug mode
+#define MESSAGE_BOX_DBG(x, y) // NOP, not in debug mode
+#endif
+
+
+#if DEBUG_MODE == true
+void print_error(const char* prefix_message)
+{
+	DWORD errorCode = GetLastError();
+	LPSTR errorMessage = nullptr;
+	FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		nullptr, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&errorMessage, 0, nullptr);
+
+	char message_buf[100];
+	sprintf(message_buf, "%s: %s - error code: %u", prefix_message, errorMessage, errorCode);
+	MESSAGE_BOX_DBG(message_buf, MB_OK | MB_ICONWARNING)
+	return;
+}
+
+void log_to_file(const char* log_buf)
+{
+	FILE* pFile = fopen(LOG_FILE_PATH, "a");
+	if (pFile == NULL)
+	{
+		// print_error("Error during logging"); // Comment out to prevent UI freeze when used inside hooked functions
+		return;
+	}
+	fseek(pFile, 0, SEEK_END);
+	long size = ftell(pFile);
+	if (size > MAX_LOG_FILE_SIZE)
+	{
+		if (_chsize(_fileno(pFile), 0) == -1)
+		{
+			fclose(pFile);
+			return;
+		}
+	}
+	fseek(pFile, 0, SEEK_END);
+	fprintf(pFile, "%s\n", log_buf);
+	fclose(pFile);
+}
+#endif
+
 
 
 unsigned int lut_index(const unsigned int b, const unsigned int g, const unsigned int r, const unsigned int c, const unsigned int lut_size)
@@ -26,7 +83,7 @@ unsigned int lut_index(const unsigned int b, const unsigned int g, const unsigne
 
 #define LUT_ACCESS_INDEX(lut, b, g, r, c, lut_size) (*((float*)(lut) + lut_index(b, g, r, c, lut_size)))
 
-#pragma intrinsic(_ReturnAddress)
+
 
 const unsigned char COverlayContext_Present_bytes[] = {
 	0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x40, 0x48, 0x8b, 0xb1, 0x20,
@@ -79,7 +136,7 @@ const unsigned char COverlayContext_OverlaysEnabled_bytes_w11[] = {
 
 int COverlayContext_DeviceClipBox_offset_w11 = 0x466C;
 
-const int IOverlaySwapChain_HardwareProtected_offset_w11 = -0x12C;
+const int IOverlaySwapChain_HardwareProtected_offset_w11 = -0x144;
 
 bool isWindows11;
 
@@ -389,7 +446,7 @@ bool AddLUTs(char* folder)
 				if (!ParseLUT(lut, filePath))
 				{
 					// TODO: Remove this debug instruction
-					MessageBoxA(NULL, "LUT could not be parsed", "DEBUG HOOK DWM", MB_OK | MB_ICONWARNING);
+					MESSAGE_BOX_DBG("LUT could not be parsed", MB_OK | MB_ICONWARNING)
 					FindClose(hFind);
 					return false;
 				}
@@ -468,6 +525,7 @@ lutData* GetLUTDataFromCOverlayContext(void* context, bool hdr)
 void InitializeStuff(IDXGISwapChain* swapChain)
 {
 	swapChain->GetDevice(IID_ID3D11Device, (void**)&device);
+	LOG_ONLY_ONCE_EX("Device successfully gathered", gather_device_from_swapchain)
 	device->GetImmediateContext(&deviceContext);
 	{
 		ID3DBlob* vsBlob;
@@ -585,6 +643,7 @@ void InitializeStuff(IDXGISwapChain* swapChain)
 		constantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
 		device->CreateBuffer(&constantBufferDesc, NULL, &constantBuffer);
+		LOG_ONLY_ONCE_EX("Final buffer created in InitializeStuff", final_buffer_initialize_buffer)
 	}
 }
 
@@ -618,6 +677,7 @@ bool ApplyLUT(void* cOverlayContext, IDXGISwapChain* swapChain, struct tagRECT* 
 {
 	if (!device)
 	{
+		LOG_ONLY_ONCE_EX("Initializing stuff in ApplyLUT", init_stuff_apply_lut)
 		InitializeStuff(swapChain);
 	}
 
@@ -737,61 +797,39 @@ typedef long (COverlayContext_Present_t)(void*, void*, unsigned int, rectVec*, u
 COverlayContext_Present_t* COverlayContext_Present_orig;
 COverlayContext_Present_t* COverlayContext_Present_real_orig;
 
-void log_to_file(const char* log_buf)
-{
-	try
-	{
-		std::fstream file(LOG_FILE_PATH,
-		                  std::ios::out | std::ios::in | std::ios::ate);
 
-		std::streampos file_size = file.tellp();
 
-		if (file_size > MAX_LOG_FILE_SIZE)
-		{
-			file.close();
-			std::remove(LOG_FILE_PATH);
-			file.open(LOG_FILE_PATH, std::ios::out);
-		}
-		else
-		{
-			file.seekp(0, std::ios::end);
-		}
-		if (static bool first_log = true)
-		{
-			MessageBoxA(NULL, "Writing to file", "DEBUG HOOK DWM", MB_OK);
-			first_log = false;
-		}
-		file << log_buf;
-		file.close();
-		
-	}
-	catch (...)
-	{
-		MessageBoxA(NULL, "Something really fucked up in log_to_file function", "DEBUG HOOK DWM", MB_OK);
-	}
-}
+
 
 long COverlayContext_Present_hook(void* self, void* overlaySwapChain, unsigned int a3, rectVec* rectVec,
                                   unsigned int a5, bool a6)
 {
 	if (_ReturnAddress() < (void*)COverlayContext_Present_real_orig)
 	{
-		if (static bool first_log = true)
-		{
-			log_to_file("I am inside COverlayContext::Present hook inside the main if condition");
-			first_log = false;
-		}
-		
+		LOG_ONLY_ONCE_EX("I am inside COverlayContext::Present hook inside the main if condition", inside_condition)
+
 		if (isWindows11 && *((bool*)overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11) ||
 			!isWindows11 && *((bool*)overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset))
 		{
+			std::stringstream hw_protection_message;
+			hw_protection_message << "I'm inside the Hardware protection condition - 0x" << std::hex << (bool*)
+				overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11 << " - value: 0x" << *((bool*)
+					overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11);
+			LOG_ONLY_ONCE_EX(hw_protection_message.str().c_str(), protection)
 			UnsetLUTActive(self);
 		}
 		else
 		{
+			std::stringstream hw_protection_message;
+			hw_protection_message << "I'm outside the Hardware protection condition - 0x" << std::hex << (bool*)
+				overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11 << " - value: 0x" << *((bool*)
+					overlaySwapChain + IOverlaySwapChain_HardwareProtected_offset_w11);
+			LOG_ONLY_ONCE_EX(hw_protection_message.str().c_str(), protection)
+
 			IDXGISwapChain* swapChain;
 			if (isWindows11)
 			{
+				LOG_ONLY_ONCE_EX("Gathering IDXGISwapChain pointer", idxgiswapchain_pointer)
 				swapChain = *(IDXGISwapChain**)((unsigned char*)overlaySwapChain +
 					IOverlaySwapChain_IDXGISwapChain_offset_w11);
 			}
@@ -803,10 +841,12 @@ long COverlayContext_Present_hook(void* self, void* overlaySwapChain, unsigned i
 
 			if (ApplyLUT(self, swapChain, rectVec->start, rectVec->end - rectVec->start))
 			{
+				LOG_ONLY_ONCE_EX("Setting LUTactive", lut_active)
 				SetLUTActive(self);
 			}
 			else
 			{
+				LOG_ONLY_ONCE_EX("Un-setting LUTactive", unset_lut_active)
 				UnsetLUTActive(self);
 			}
 		}
@@ -838,6 +878,7 @@ bool COverlayContext_OverlaysEnabled_hook(void* self)
 {
 	if (IsLUTActive(self))
 	{
+		LOG_ONLY_ONCE_EX("LUT ACTIVE FALSE in overlaysEnabled", lut_active_false)
 		return false;
 	}
 	return COverlayContext_OverlaysEnabled_orig(self);
@@ -857,12 +898,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 			ULONG NtBuildNumber = *(ULONG*)(KUSER_SHARED_DATA + 0x260);
 			isWindows11 = NtBuildNumber >= 22000;
 			// TODO: Remove this debug instruction
-			MessageBoxA(NULL, "DWM LUT ATTACH", "DEBUG HOOK DWM", MB_OK);
+			MESSAGE_BOX_DBG("DWM LUT ATTACH", MB_OK)
 
 			if (isWindows11)
 			{
 				// TODO: Remove this debug instruction
-				MessageBoxA(NULL, "DETECTED WINDOWS 11 OS", "DEBUG HOOK DWM", MB_OK);
+				MESSAGE_BOX_DBG("DETECTED WINDOWS 11 OS", MB_OK)
+				
 				for (size_t i = 0; i <= moduleInfo.SizeOfImage - sizeof COverlayContext_OverlaysEnabled_bytes_w11; i++)
 				{
 					unsigned char* address = (unsigned char*)dwmcore + i;
@@ -871,7 +913,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 						                                      sizeof COverlayContext_Present_bytes_w11))
 					{
 						// TODO: Remove this debug instruction
-						MessageBoxA(NULL, "DETECTED COverlayContextPresent address", "DEBUG HOOK DWM", MB_OK);
+						MESSAGE_BOX_DBG("DETECTED COverlayContextPresent address", MB_OK)
+
 						COverlayContext_Present_orig = (COverlayContext_Present_t*)address;
 						COverlayContext_Present_real_orig = COverlayContext_Present_orig;
 					}
@@ -894,7 +937,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 					if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig &&
 						COverlayContext_OverlaysEnabled_orig)
 					{
-						MessageBoxA(NULL, "All addresses successfully retrieved", "DEBUG HOOK DWM", MB_OK);
+						MESSAGE_BOX_DBG("All addresses successfully retrieved", MB_OK)
+						
 						break;
 					}
 				}
@@ -906,7 +950,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 
 				if (rev >= 706)
 				{
-					MessageBoxA(NULL, "Dectected recent Windows OS", "DEBUG HOOK DWM", MB_OK);
+					MESSAGE_BOX_DBG("Detected recent Windows OS", MB_OK)
+					
 					// COverlayContext_DeviceClipBox_offset_w11 += 8;
 				}
 			}
@@ -957,7 +1002,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 			        "COverlayContext::IsCandidateDirectFlipCompatible - %p\tCOverlayContext::OverlaysEnabled - %p",
 			        COverlayContext_Present_orig,
 			        COverlayContext_IsCandidateDirectFlipCompatbile_orig, COverlayContext_OverlaysEnabled_orig);
-			MessageBoxA(NULL, variable_message_states, "DEBUG HOOM DWM", MB_OK);
+
+			MESSAGE_BOX_DBG(variable_message_states, MB_OK)
 
 			if (COverlayContext_Present_orig && COverlayContext_IsCandidateDirectFlipCompatbile_orig &&
 				COverlayContext_OverlaysEnabled_orig && numLuts != 0)
@@ -972,9 +1018,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 				MH_CreateHook((PVOID)COverlayContext_OverlaysEnabled_orig, (PVOID)COverlayContext_OverlaysEnabled_hook,
 				              (PVOID*)&COverlayContext_OverlaysEnabled_orig);
 				MH_EnableHook(MH_ALL_HOOKS);
-
-				//log_to_file("DWM HOOK DLL INITIALIZATION");
-				MessageBoxA(NULL, "DWM HOOK INITIALIZATION", "DEBUG HOOK DWM", MB_OK);
+				LOG_ONLY_ONCE_EX("DWM HOOK DLL INITIALIZATION. START LOGGING", dll_initialization)
+				MESSAGE_BOX_DBG("DWM HOOK INITIALIZATION", MB_OK)
+				
 				break;
 			}
 			return FALSE;
