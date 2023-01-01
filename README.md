@@ -1,5 +1,6 @@
-## [Download latest release](https://github.com/ledoge/dwm_lut/releases/latest/download/release.zip)
+# Currently unmaintained, see [here](https://github.com/lauralex/dwm_lut) for updated version that works on 22H2
 
+## [Download latest release](https://github.com/ledoge/dwm_lut/releases/latest/download/release.zip)
 
 # About
 This tool applies 3D LUTs to the Windows desktop by hooking into DWM. It works in both SDR and HDR modes, and uses tetrahedral interpolation on the LUT data. In SDR, blue-noise dithering is applied to the output to reduce banding.
