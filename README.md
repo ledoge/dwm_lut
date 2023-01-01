@@ -1,4 +1,4 @@
-## [Download latest release](https://github.com/ledoge/dwm_lut/releases/latest/download/release.zip)
+## [Download latest release](https://github.com/lauralex/dwm_lut/releases/latest/download/Release.zip)
 
 
 # About
