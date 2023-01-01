@@ -19,11 +19,11 @@ Minimizing the GUI will make it disappear from the taskbar, and you can use the 
 Note: DirectFlip and MPO get force disabled on monitors with an active LUT. These features are designed to improve performance for some windowed applications by allowing them to bypass DWM (and therefore also the LUT). This ensures that LUTs get applied properly to all applications (except exclusive fullscreen ones).
 
 # Compiling
-Using MSYS2's mingw64 environment: Install `mingw-w64-x86_64-MinHook` and run
-```
-gcc dwm_lut.c -O3 -shared -static -s -lMinHook -ld3dcompiler -luuid -Wl,--exclude-all-symbols -o dwm_lut.dll
-```
+Install [vcpkg](https://vcpkg.io/en/getting-started.html) for C++ dependency management:
 
-to generate the DLL.
+- Create and switch to your desired install folder (e.g. _%LOCALAPPDATA%\vcpkg_)
+- `git clone https://github.com/Microsoft/vcpkg.git .`
+- `.\bootstrap-vcpkg.bat`
+- `vcpkg integrate install`
 
-As for the GUI, just open the project in Visual Studio and compile a x64 Release build.
+Just open the projects in Visual Studio and compile a x64 Release build.
