@@ -1,5 +1,5 @@
+# A fork of the [original dwm_lut](https://github.com/ledoge/dwm_lut) which works also on **Windows 11**
 ## [Download latest release](https://github.com/lauralex/dwm_lut/releases/latest/download/Release.zip)
-
 
 # About
 This tool applies 3D LUTs to the Windows desktop by hooking into DWM. It works in both SDR and HDR modes, and uses tetrahedral interpolation on the LUT data. In SDR, blue-noise dithering is applied to the output to reduce banding.
