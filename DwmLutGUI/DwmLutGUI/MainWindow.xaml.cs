@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Input;
 using Microsoft.Win32;
 using MessageBox = System.Windows.Forms.MessageBox;
 
@@ -113,6 +114,10 @@ namespace DwmLutGUI
             Closed += delegate { notifyIcon.Dispose(); };
 
             SystemEvents.DisplaySettingsChanged += _viewModel.OnDisplaySettingsChanged;
+            App.KListener.KeyDown += MonitorLutToggle;
+            var keys = Enum.GetValues(typeof(Key)).Cast<Key>().ToList();
+            ToggleKeyCombo.ItemsSource = keys;
+            ToggleKeyCombo.SelectedItem = Key.NumPad1;
         }
 
         protected override void OnStateChanged(EventArgs e)
@@ -237,6 +242,45 @@ namespace DwmLutGUI
             overlay.Show();
             Thread.Sleep(50);
             overlay.Close();
+        }
+
+        private void RemoveSdrLut_Click(object sender, RoutedEventArgs e)
+        {
+            var monitor = _viewModel.SelectedMonitor;
+            if (monitor == null) return;
+            monitor.SdrLuts.Remove(monitor.SdrLutPath);
+            var anySdrLut = monitor.SdrLuts.FirstOrDefault();
+            monitor.SdrLutPath = anySdrLut ?? "None";
+        }
+
+        private void MonitorLutToggle(object sender, RawKeyEventArgs e)
+        {
+            if (e.Key != (Key)ToggleKeyCombo.SelectedItem) return;
+            var monitor = _viewModel.SelectedMonitor;
+            if (monitor == null) return;
+            if (monitor.SdrLutFilename != "None")
+            {
+                _viewModel.SdrLutPath =
+                    monitor.SdrLuts[(monitor.SdrLuts.IndexOf(monitor.SdrLutPath) + 1) % monitor.SdrLuts.Count];
+            }
+            else
+            {
+                _viewModel.HdrLutPath = monitor.HdrLuts[(monitor.HdrLuts.IndexOf(monitor.HdrLutPath) + 1) % monitor.HdrLuts.Count];
+            }
+
+            if (_viewModel.IsActive)
+            {
+                Disable_Click(null, null);
+                Apply_Click(null, null);
+            }
+        }
+
+        private void RemoveHdrLut_Click(object sender, RoutedEventArgs e)
+        {
+            var monitor = _viewModel.SelectedMonitor;
+            if (monitor == null) return;
+            monitor.HdrLuts.Remove(monitor.HdrLutPath);
+            monitor.HdrLutPath = monitor.HdrLuts.FirstOrDefault();
         }
     }
 }
