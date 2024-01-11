@@ -20,7 +20,7 @@ namespace DwmLutGUI
 
         static Injector()
         {
-            var basePath = Environment.ExpandEnvironmentVariables("%SYSTEMROOT%\\Temp\\");
+            var basePath = Path.GetTempPath();
             DllName = "dwm_lut.dll";
             DllPath = basePath + DllName;
             LutsPath = basePath + "luts\\";
