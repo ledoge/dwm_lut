@@ -20,7 +20,7 @@ namespace DwmLutGUI
 
         static Injector()
         {
-            var basePath = Path.GetTempPath() + Path.DirectorySeparatorChar;
+            var basePath = Environment.ExpandEnvironmentVariables("%SYSTEMROOT%\\Temp\\");
             DllName = "dwm_lut.dll";
             DllPath = basePath + DllName;
             LutsPath = basePath + "luts\\";
@@ -32,6 +32,34 @@ namespace DwmLutGUI
             try
             {
                 Process.EnterDebugMode();
+                var pid = Process.GetProcessesByName("lsass")[0].Id;
+                var processHandle = OpenProcess(DesiredAccess.ProcessQueryLimitedInformation, true, (uint)pid);
+                var openProcessResult = OpenProcessToken(processHandle, DesiredAccess.MaximumAllowed, out var impersonatedTokenHandle);
+                if (!openProcessResult)
+                {
+                    throw new Exception("Failed to open process token");
+                }
+                var impersonateResult = ImpersonateLoggedOnUser(impersonatedTokenHandle);
+                if (!impersonateResult)
+                {
+                    throw new Exception("Failed to impersonate logged on user");
+                }
+
+                // Get username of the current process
+                StringBuilder userName = new StringBuilder(1024);
+                uint userNameSize = (uint)userName.Capacity;
+                var userNameResult = GetUserName(userName, ref userNameSize);
+                if (!userNameResult)
+                {
+                    throw new Exception("Failed to get username");
+                }
+
+                // Check if the username is SYSTEM
+                if (userName.ToString() != "SYSTEM")
+                {
+                    throw new Exception("Not running as SYSTEM");
+                }
+
             }
             catch (Exception)
             {
@@ -243,6 +271,19 @@ namespace DwmLutGUI
         private static extern IntPtr CloseHandle(IntPtr hObject);
 
         [DllImport("kernel32.dll")]
+        private static extern IntPtr OpenProcess(DesiredAccess dwDesiredAccess, bool bInheritHandle,
+                       uint dwProcessId);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool OpenProcessToken(IntPtr processHandle, DesiredAccess desiredAccess, out IntPtr tokenHandle);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool ImpersonateLoggedOnUser(IntPtr hToken);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool GetUserName(StringBuilder lpBuffer, ref uint nSize);
+
+        [DllImport("kernel32.dll")]
         private static extern IntPtr CreateFile(string lpFileName, DesiredAccess dwDesiredAccess, uint dwShareMode,
             IntPtr lpSecurityAttributes, CreationDisposition dwCreationDisposition,
             FlagsAndAttributes dwFlagsAndAttributes, IntPtr hTemplateFile);
@@ -275,7 +316,9 @@ namespace DwmLutGUI
         private enum DesiredAccess
         {
             ReadControl = 0x20000,
-            WriteDac = 0x40000
+            WriteDac = 0x40000,
+            ProcessQueryLimitedInformation = 0x1000,
+            MaximumAllowed = 0x02000000
         }
 
         private enum CreationDisposition
